@@ -1,17 +1,38 @@
-import { Geist, Geist_Mono, Inter, Space_Grotesk } from "next/font/google"
+import type { Metadata, Viewport } from "next"
+import { Barlow, Barlow_Condensed } from "next/font/google"
 
 import "@workspace/ui/globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@workspace/ui/lib/utils";
+import { Providers } from "@/components/providers"
+import { cn } from "@workspace/ui/lib/utils"
 
-const spaceGroteskHeading = Space_Grotesk({subsets:['latin'],variable:'--font-heading'});
-
-const inter = Inter({subsets:['latin'],variable:'--font-sans'})
-
-const fontMono = Geist_Mono({
+// Barlow's plain, DIN-like shapes read like gym signage and scoreboards
+const barlow = Barlow({
   subsets: ["latin"],
-  variable: "--font-mono",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
 })
+
+// The condensed cut carries the numbers
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-display",
+})
+
+export const metadata: Metadata = {
+  title: "Pact90",
+  description:
+    "A shared scoreboard for the last 92 days of the year. Pick your own goals for diet, training and habits, check in once a day, and see everyone's numbers.",
+  openGraph: { title: "Pact90", siteName: "Pact90" },
+  twitter: { card: "summary_large_image" },
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f2f3f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#111319" },
+  ],
+}
 
 export default function RootLayout({
   children,
@@ -22,10 +43,10 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", inter.variable, spaceGroteskHeading.variable)}
+      className={cn("antialiased", "font-sans", barlow.variable, barlowCondensed.variable)}
     >
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

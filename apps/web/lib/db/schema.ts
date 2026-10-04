@@ -44,6 +44,16 @@ export const profiles = pgTable("profiles", {
   reviewedBy: uuid("reviewed_by"),
 })
 
+// Google emails an admin let in ahead of time. Signing in with one skips the waiting room
+export const invites = pgTable("invites", {
+  // Stored lowercase
+  email: text("email").primaryKey(),
+  invitedBy: uuid("invited_by").references(() => profiles.userId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  emailedAt: timestamp("emailed_at", { withTimezone: true }),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+})
+
 export const squads = pgTable("squads", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
@@ -195,3 +205,4 @@ export const nudges = pgTable(
 export type Profile = typeof profiles.$inferSelect
 export type ProfileStatus = (typeof profileStatus.enumValues)[number]
 export type GoalRow = typeof goals.$inferSelect
+export type Invite = typeof invites.$inferSelect

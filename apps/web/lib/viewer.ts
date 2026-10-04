@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm"
 import { auth } from "@/lib/auth/server"
 import { db } from "@/lib/db"
 import { type Profile, profiles } from "@/lib/db/schema"
+import { isInvited, markAccepted } from "@/lib/invites"
 
 function adminEmails() {
   return (process.env.ADMIN_EMAILS ?? "")
@@ -21,7 +22,7 @@ export function isAdminEmail(email: string) {
 }
 
 // The signed-in person and their profile, created on first visit.
-// Admins listed in ADMIN_EMAILS are approved automatically.
+// Admins listed in ADMIN_EMAILS, and anyone an admin invited, are approved automatically.
 export const getViewer = cache(async (): Promise<Profile | null> => {
   // Session lives in cookies, so anything that asks for the viewer renders per request.
   // Saying so up front stops the auth SDK from logging Next's prerender bailout as an error
@@ -36,11 +37,20 @@ export const getViewer = cache(async (): Promise<Profile | null> => {
 
   const existing = await getProfile(user.id)
   if (!existing) {
+    const invited = !admin && (await isInvited(user.email))
     const [created] = await db
       .insert(profiles)
-      .values({ userId: user.id, email: user.email, name, image, isAdmin: admin, status: admin ? "approved" : "pending" })
+      .values({
+        userId: user.id,
+        email: user.email,
+        name,
+        image,
+        isAdmin: admin,
+        status: admin || invited ? "approved" : "pending",
+      })
       .onConflictDoNothing()
       .returning()
+    if (created && invited) await markAccepted(user.email)
     return created ?? getProfile(user.id)
   }
 

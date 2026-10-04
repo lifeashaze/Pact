@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 
 import { AdminBoard } from "@/components/admin-board"
+import { AdminNav } from "@/components/admin-nav"
 import { listMembers } from "@/lib/members"
 import { requireAdmin } from "@/lib/viewer"
 
@@ -17,6 +18,7 @@ export default async function AdminPage() {
         <p className="mt-2 max-w-[60ch] text-muted-foreground">
           Everyone who signs in with Google lands here first. Nobody sees the squad&apos;s numbers until you let them in.
         </p>
+        <AdminNav />
       </header>
       <AdminBoard initial={members} viewerId={viewer.userId} />
     </div>

@@ -16,12 +16,16 @@
       ],
       "env": [
         "ADMIN_EMAILS",
+        "APP_URL",
         "DATABASE_URL",
         "DATABASE_URL_UNPOOLED",
         "DB_ENV",
+        "EMAIL_FROM",
         "NEON_AUTH_BASE_URL",
         "NEON_AUTH_COOKIE_SECRET",
-        "PACT_TODAY"
+        "PACT_TODAY",
+        "RESEND_API_KEY",
+        "VERCEL_PROJECT_PRODUCTION_URL"
       ]
     },
     "lint": {

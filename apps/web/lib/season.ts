@@ -76,6 +76,16 @@ export function dayIndex(startsOn: string, date: Date, timeZone: string) {
 export const isoDay = (startsOn: string, day: number) =>
   new Date(Date.parse(startsOn) + day * DAY_MS).toISOString().slice(0, 10)
 
+// People who joined after the season started can fill in every missed day until this date
+// (inclusive, in their own time zone). After it, only today and yesterday stay open
+export const BACKFILL_UNTIL = "2026-10-07"
+
+// Earliest day index a member can still log or edit, given their today
+export function firstEditableDay(startsOn: string, today: number) {
+  if (isoDay(startsOn, today) <= BACKFILL_UNTIL) return 0
+  return Math.max(0, today - 1)
+}
+
 // ---------- helpers that don't depend on the date ----------
 
 export function isHit(goal: Goal, log: DayLog | undefined) {
@@ -218,6 +228,8 @@ export function createSeason(info: SeasonInfo) {
     WEEKS,
     started: info.today >= 0,
     ended: info.today >= SEASON_DAYS,
+    FIRST_EDITABLE: firstEditableDay(info.startsOn, TODAY),
+    backfillOpen: isoDay(info.startsOn, TODAY) <= BACKFILL_UNTIL,
     daysUntilStart: Math.max(0, -info.today),
     dateOf,
     shortDate,

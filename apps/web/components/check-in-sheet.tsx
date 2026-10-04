@@ -7,7 +7,17 @@ import { RiAddLine, RiCheckLine, RiCloseLine, RiLockLine, RiSubtractLine } from 
 import { cn } from "@workspace/ui/lib/utils"
 import { Kbd, hueTint, hueVar, useMediaQuery } from "@/components/bits"
 import { useSeason, useSquad } from "@/components/squad-store"
-import { type DayLog, type Goal, type Hue, dailyGoals, formatNumber, isHit, latestAverage, workoutGoal } from "@/lib/season"
+import {
+  BACKFILL_UNTIL,
+  type DayLog,
+  type Goal,
+  type Hue,
+  dailyGoals,
+  formatNumber,
+  isHit,
+  latestAverage,
+  workoutGoal,
+} from "@/lib/season"
 
 const workoutTypes = ["Push", "Pull", "Legs", "Upper body", "Full body", "Run", "Cardio", "Class", "Sport", "Yoga"]
 
@@ -110,7 +120,7 @@ function blankLog(goals: Goal[], logs: (DayLog | undefined)[]): DayLog {
 }
 
 function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
-  const { TODAY, longDate, weekOf, workoutsInWeek } = useSeason()
+  const { TODAY, FIRST_EDITABLE, SEASON_START, backfillOpen, longDate, shortDate, weekOf, workoutsInWeek } = useSeason()
   const { logs, saveCheckIn, closeCheckIn, you, checkInDay } = useSquad()
   const mine = logs[you.id] ?? []
   const [day, setDay] = React.useState(checkInDay)
@@ -162,8 +172,12 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
     return () => document.removeEventListener("keydown", listener)
   }, [])
 
-  const canYesterday = TODAY > 0
-  const dayLabel = day === TODAY ? "Today" : "Yesterday"
+  // Today and yesterday, or every day since the start while late joiners can still catch up
+  const days = Array.from({ length: Math.max(0, TODAY - FIRST_EDITABLE + 1) }, (_, i) => FIRST_EDITABLE + i)
+  const catchingUp = backfillOpen && FIRST_EDITABLE < TODAY - 1
+  const dayName = (d: number) => (d === TODAY ? "today" : d === TODAY - 1 ? "yesterday" : shortDate(d))
+  const tabName = (d: number) => (d === TODAY ? "Today" : d === TODAY - 1 ? "Yesterday" : shortDate(d))
+  const backfillEnds = shortDate(Math.round((Date.parse(BACKFILL_UNTIL) - SEASON_START) / 86_400_000))
 
   return (
     <>
@@ -178,7 +192,7 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
         <div>
           <p className="text-sm text-muted-foreground">{longDate(day)}</p>
           <h2 id="check-in-title" className="font-display text-3xl font-semibold tracking-tight lg:text-4xl">
-            {existing ? `Edit ${dayLabel.toLowerCase()}` : day === TODAY ? "Check in" : "Log yesterday"}
+            {existing ? `Edit ${dayName(day)}` : day === TODAY ? "Check in" : `Log ${dayName(day)}`}
           </h2>
         </div>
         <button
@@ -194,11 +208,12 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
       {/* One column on phones and tablets. On desktop the day, progress and save sit on the left and the goals scroll on the right */}
       <div className="flex min-h-0 flex-1 flex-col lg:grid lg:min-h-[min(28rem,60svh)] lg:grid-cols-[18rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto]">
         <div className="shrink-0 px-6 lg:col-start-1 lg:row-start-1 lg:border-e lg:border-border lg:px-8 lg:pt-6">
-          {canYesterday && (
+          {days.length > 1 && (
             <div className="pb-3 lg:pb-6">
               <LayoutGroup id="check-in-day">
-                <div role="tablist" aria-label="Day" className="flex w-fit gap-1 rounded-full bg-muted p-1">
-                  {[TODAY - 1, TODAY].map((d) => (
+                {/* Wraps onto a second row when catching up on a whole week */}
+                <div role="tablist" aria-label="Day" className="flex w-fit max-w-full flex-wrap gap-1 rounded-[1.25rem] bg-muted p-1">
+                  {days.map((d) => (
                     <button
                       key={d}
                       role="tab"
@@ -208,13 +223,22 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
                     >
                       {day === d && <motion.span layoutId="day-pill" className="absolute inset-0 rounded-full bg-card shadow-sm" />}
                       <span className="relative">
-                        {d === TODAY ? "Today" : "Yesterday"}
+                        {tabName(d)}
                         {mine[d] && <span className="sr-only"> (saved)</span>}
                       </span>
+                      {/* Shows which missed days are already filled in */}
+                      {catchingUp && mine[d] && (
+                        <span aria-hidden className="relative ms-1.5 inline-block size-1.5 rounded-full bg-current align-middle" />
+                      )}
                     </button>
                   ))}
                 </div>
               </LayoutGroup>
+              {catchingUp && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Joined late? Until {backfillEnds} you can fill in any day since the season started.
+                </p>
+              )}
             </div>
           )}
 
@@ -251,7 +275,7 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
               <ToggleRow
                 ref={firstControl}
                 hue={you.hue}
-                label={day === TODAY ? "Worked out today" : "Worked out yesterday"}
+                label={day >= TODAY - 1 ? `Worked out ${dayName(day)}` : `Worked out on ${dayName(day)}`}
                 sub={`${workoutsBefore + (log.checks.workout ? 1 : 0)} of ${wGoal.weekly} this week`}
                 on={!!log.checks.workout}
                 onChange={(on) => {

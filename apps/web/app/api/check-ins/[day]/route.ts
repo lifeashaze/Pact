@@ -3,11 +3,13 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { bad, memberOrError, readJson } from "@/lib/api"
 import { db } from "@/lib/db"
 import { checkIns, entries, goals } from "@/lib/db/schema"
+import { firstEditableDay } from "@/lib/season"
 
 type Body = { entries?: { goalId?: unknown; checked?: unknown; value?: unknown; note?: unknown }[] }
 
 // Save one day's check-in: every goal's value, and that the day was logged.
-// Today and yesterday can be written; older days are locked
+// Today and yesterday can be written; older days are locked, except during the
+// late-joiner backfill window when every day since the start is open
 export async function PUT(req: Request, ctx: RouteContext<"/api/check-ins/[day]">) {
   const auth = await memberOrError()
   if (auth.error) return auth.error
@@ -19,7 +21,7 @@ export async function PUT(req: Request, ctx: RouteContext<"/api/check-ins/[day]"
   const index = Math.round((Date.parse(day) - Date.parse(squad.startsOn)) / 86_400_000)
   if (Number.isNaN(index) || index < 0 || index >= squad.days) return bad("That day isn't part of the season")
   if (index > today) return bad("That day hasn't happened yet")
-  if (index < today - 1) return bad("Only today and yesterday can be changed")
+  if (index < firstEditableDay(squad.startsOn, today)) return bad("Only today and yesterday can be changed")
 
   const body = await readJson<Body>(req)
   if (!body || !Array.isArray(body.entries) || body.entries.length > 50) return bad("Send an entries array")

@@ -21,7 +21,7 @@ export function useNow() {
 
 export type SeasonPhase =
   | { phase: "before"; days: number; hours: number; minutes: number; seconds: number }
-  | { phase: "during"; day: number; left: number }
+  | { phase: "during" }
   | { phase: "after" }
 
 export function seasonPhase(now: number): SeasonPhase {
@@ -36,8 +36,7 @@ export function seasonPhase(now: number): SeasonPhase {
     }
   }
   if (now < END) {
-    const day = Math.floor((now - START) / DAY) + 1
-    return { phase: "during", day, left: 92 - day }
+    return { phase: "during" }
   }
   return { phase: "after" }
 }
@@ -53,42 +52,8 @@ export function SeasonLine({ className }: { className?: string }) {
     <p className={className} aria-live="off">
       {p.phase === "before" &&
         `Season one starts Thursday 1 October, in ${plural(p.days, "day")} and ${plural(p.hours, "hour")}.`}
-      {p.phase === "during" && `Season one is on: day ${p.day} of 92, ${plural(p.left, "day")} to go.`}
+      {p.phase === "during" && "Season one is on. It ends 31 December."}
       {p.phase === "after" && "Season one is done. The next one starts soon."}
     </p>
-  )
-}
-
-// Big ticking digits for the closing section
-export function CountdownDigits() {
-  const now = useNow()
-  const p = now === null ? null : seasonPhase(now)
-  const cells =
-    p?.phase === "before"
-      ? [
-          { v: p.days, l: p.days === 1 ? "day" : "days" },
-          { v: p.hours, l: p.hours === 1 ? "hour" : "hours" },
-          { v: p.minutes, l: "min" },
-          { v: p.seconds, l: "sec" },
-        ]
-      : p?.phase === "during"
-        ? [
-            { v: p.day, l: "day" },
-            { v: p.left, l: "to go" },
-          ]
-        : null
-
-  if (p?.phase === "after") return null
-  return (
-    <div className="flex gap-2 sm:gap-3" role="timer" aria-label="Time until the season starts">
-      {(cells ?? [{ v: null, l: "days" }, { v: null, l: "hours" }, { v: null, l: "min" }, { v: null, l: "sec" }]).map((c) => (
-        <div key={c.l} className="grid min-w-[4.25rem] justify-items-center rounded-2xl bg-card px-3 pt-3 pb-2.5 sm:min-w-24 sm:px-4">
-          <span className="font-display text-5xl leading-none font-bold tabular-nums sm:text-7xl">
-            {c.v === null ? "--" : String(c.v).padStart(2, "0")}
-          </span>
-          <span className="mt-1 text-xs font-medium text-muted-foreground sm:text-sm">{c.l}</span>
-        </div>
-      ))}
-    </div>
   )
 }

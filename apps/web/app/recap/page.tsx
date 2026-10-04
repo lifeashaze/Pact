@@ -4,8 +4,9 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { RiCloseLine } from "@remixicon/react"
+import { RiArrowLeftSLine, RiArrowRightSLine, RiCloseLine } from "@remixicon/react"
 
+import { cn } from "@workspace/ui/lib/utils"
 import { Avatar, CountUp, hueTint, hueVar, pct } from "@/components/bits"
 import { useSquad, useSeason } from "@/components/squad-store"
 import { type Member, weightSeries } from "@/lib/season"
@@ -55,7 +56,7 @@ export default function RecapPage() {
           <Kicker>Week {week + 1} recap</Kicker>
           <Big>{weekLabel(week)}</Big>
           <p className="mt-10 text-lg text-muted-foreground">As a squad you hit</p>
-          <p className="font-display text-8xl leading-none font-semibold">
+          <p className="font-display text-8xl leading-none font-semibold lg:text-9xl">
             <CountUp value={squad} format={pct} />
           </p>
           <p className="text-lg text-muted-foreground">of your goals</p>
@@ -108,7 +109,7 @@ export default function RecapPage() {
       body: (
         <>
           <Kicker>Final table</Kicker>
-          <ol className="mt-6 grid w-full max-w-sm gap-3">
+          <ol className="mt-6 grid w-full max-w-sm gap-3 lg:max-w-md">
             {scores.map((s, i) => (
               <motion.li
                 key={s.m.id}
@@ -134,7 +135,7 @@ export default function RecapPage() {
           <Big>Same again. Better.</Big>
           <Link
             href="/home"
-            className="mt-10 inline-flex h-13 items-center rounded-full bg-primary px-7 font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="mt-10 inline-flex h-13 items-center rounded-full bg-primary px-7 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             Back to the squad
           </Link>
@@ -173,7 +174,10 @@ export default function RecapPage() {
       <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center px-6 text-center">
         <h1 className="font-display text-5xl leading-[0.95] font-bold tracking-tight">No recap yet</h1>
         <p className="mt-4 text-lg text-muted-foreground">The first one lands when week 1 wraps up.</p>
-        <Link href="/home" className="mt-8 inline-flex h-12 items-center justify-center rounded-full bg-primary px-6 font-semibold text-primary-foreground">
+        <Link
+          href="/home"
+          className="mt-8 inline-flex h-12 items-center justify-center rounded-full bg-primary px-6 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:self-center"
+        >
           Back to the squad
         </Link>
       </main>
@@ -187,7 +191,7 @@ export default function RecapPage() {
       transition={{ duration: 0.5 }}
     >
       {/* Progress segments; the current one fills over five seconds and advances */}
-      <div className="relative z-10 flex gap-1.5 px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+      <div className="relative z-10 mx-auto flex w-full gap-1.5 px-4 pt-[max(1rem,env(safe-area-inset-top))] lg:max-w-3xl lg:px-8 lg:pt-8">
         {slides.map((_, i) => (
           <div key={i} className="h-1 flex-1 overflow-hidden rounded-full bg-foreground/15">
             {i < index && <div className="h-full w-full bg-foreground" />}
@@ -204,12 +208,12 @@ export default function RecapPage() {
           </div>
         ))}
       </div>
-      <div className="relative z-10 flex items-center justify-between px-4 pt-3">
-        <span className="font-display text-lg font-semibold">Pact90</span>
+      <div className="relative z-10 mx-auto flex w-full items-center justify-between px-4 pt-3 lg:max-w-3xl lg:px-8">
+        <span className="font-display text-lg font-semibold">Pact</span>
         <Link
           href="/home"
           aria-label="Close recap"
-          className="grid size-10 place-items-center rounded-full bg-foreground/10 focus-visible:outline-2 focus-visible:outline-ring"
+          className="grid size-10 place-items-center rounded-full bg-foreground/10 transition-colors hover:bg-foreground/15 focus-visible:outline-2 focus-visible:outline-ring"
         >
           <RiCloseLine className="size-5" />
         </Link>
@@ -223,6 +227,11 @@ export default function RecapPage() {
             <button aria-label="Next" className="absolute inset-y-0 end-0 w-2/3" onClick={() => go(index + 1)} />
           </>
         )}
+        {/* Desktop: visible arrows for the mouse. Mouse-only; keyboards use the arrow keys and screen readers the zones above */}
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 mx-auto hidden w-full max-w-6xl -translate-y-1/2 justify-between px-8 lg:flex">
+          <SlideArrow side="prev" hidden={index === 0} onClick={() => go(index - 1)} />
+          <SlideArrow side="next" hidden={lastSlide} onClick={() => go(index + 1)} />
+        </div>
         <AnimatePresence mode="wait" custom={dir}>
           <motion.div
             key={index}
@@ -236,14 +245,35 @@ export default function RecapPage() {
             animate="center"
             exit="exit"
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="pointer-events-none flex w-full max-w-lg flex-col items-center text-center [&_a]:pointer-events-auto"
+            className="pointer-events-none flex w-full max-w-lg flex-col items-center text-center lg:max-w-2xl [&_a]:pointer-events-auto"
             aria-live="polite"
           >
             {slide.body}
           </motion.div>
         </AnimatePresence>
+        <p className="pointer-events-none absolute inset-x-0 bottom-8 hidden text-center text-sm text-muted-foreground lg:block" aria-hidden>
+          Use ← and → to move, Esc to close
+        </p>
       </div>
     </motion.div>
+  )
+}
+
+function SlideArrow({ side, hidden, onClick }: { side: "prev" | "next"; hidden: boolean; onClick: () => void }) {
+  const Icon = side === "prev" ? RiArrowLeftSLine : RiArrowRightSLine
+  return (
+    <button
+      type="button"
+      aria-hidden
+      tabIndex={-1}
+      onClick={onClick}
+      className={cn(
+        "pointer-events-auto grid size-14 place-items-center rounded-full bg-foreground/10 transition-[background-color,opacity] hover:bg-foreground/15",
+        hidden && "pointer-events-none opacity-0"
+      )}
+    >
+      <Icon className="size-7" />
+    </button>
   )
 }
 
@@ -252,7 +282,7 @@ function Kicker({ children }: { children: React.ReactNode }) {
 }
 
 function Big({ children }: { children: React.ReactNode }) {
-  return <h1 className="mt-2 font-display text-6xl leading-none font-semibold tracking-tight text-balance sm:text-7xl">{children}</h1>
+  return <h1 className="mt-2 font-display text-6xl leading-none font-semibold tracking-tight text-balance sm:text-7xl lg:text-8xl">{children}</h1>
 }
 
 function Hero({ member }: { member: Member }) {

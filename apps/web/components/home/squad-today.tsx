@@ -4,13 +4,16 @@ import Link from "next/link"
 import { AnimatePresence, motion } from "motion/react"
 import { RiCheckLine, RiNotification3Line } from "@remixicon/react"
 
+import { cn } from "@workspace/ui/lib/utils"
 import { Avatar, CountUp, hueVar, pct } from "@/components/bits"
 import { CardHeader, HomeCard } from "@/components/home/card"
 import { checkedInCount, memberWeekScore, seasonPhase, weeklyWorkoutTarget } from "@/components/home/derive"
+import { levelColor } from "@/components/season-views"
 import { useSquad, useSeason } from "@/components/squad-store"
-import { type Member, dailyGoals, dayResult, isHit } from "@/lib/season"
+import { type DayLog, type Member, dailyGoals, dayResult, dayScore, isHit } from "@/lib/season"
 
-// Everyone's day at a glance: who's checked in, how much they got done, and their week so far
+// Everyone's day at a glance: who's checked in, how much they got done, and their week so far.
+// A wide card also shows each person's week day by day
 export function SquadToday({ index }: { index?: number }) {
   const season = useSeason()
   const { TODAY } = season
@@ -62,7 +65,8 @@ function MemberRow({ member }: { member: Member }) {
   const wasNudged = nudged.includes(member.id)
 
   return (
-    <div className="group relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3">
+    // The hover wash sits behind the row, so the stretched link above it still takes every click
+    <div className="group relative isolate grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-2xl before:transition-colors hover:before:bg-muted/60 @lg:grid-cols-[auto_minmax(0,1fr)_auto_auto] @lg:gap-x-5">
       <Avatar member={member} size={40} />
 
       <div className="min-w-0">
@@ -104,6 +108,8 @@ function MemberRow({ member }: { member: Member }) {
         </div>
       </div>
 
+      {phase !== "before" && <WeekStrip member={member} logs={memberLogs} />}
+
       {phase !== "before" && (
         <div className="min-w-16 text-end">
           {week === undefined ? (
@@ -119,6 +125,27 @@ function MemberRow({ member }: { member: Member }) {
         </div>
       )}
     </div>
+  )
+}
+
+// This week so far, one square per day, shaded by how much got done
+function WeekStrip({ member, logs }: { member: Member; logs: (DayLog | undefined)[] }) {
+  const { TODAY, weekOf, weekDays } = useSeason()
+  const { start, end } = weekDays(weekOf(TODAY))
+  const days = Array.from({ length: end - start + 1 }, (_, i) => start + i)
+  return (
+    <span className="hidden gap-1 @lg:flex" aria-hidden>
+      {days.map((d) => {
+        const log = logs[d]
+        return (
+          <span
+            key={d}
+            className={cn("size-3.5 rounded-[4px]", d === TODAY && "ring-1 ring-axis ring-offset-1 ring-offset-card")}
+            style={{ background: d > TODAY ? "var(--grid)" : log ? levelColor(member.hue, dayScore(member, log)) : "var(--muted)" }}
+          />
+        )
+      })}
+    </span>
   )
 }
 

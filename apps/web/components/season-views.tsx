@@ -78,7 +78,11 @@ function RowLink({ m, label, children, className }: { m: Member; label: string; 
     <Link
       href={`/squad/${m.id}`}
       aria-label={label}
-      className={cn("rounded-xl focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring", className)}
+      // The ring matches the fill, so hovering reads as a padded highlight without shifting the layout
+      className={cn(
+        "rounded-xl transition-colors hover:bg-muted/50 hover:ring-4 hover:ring-muted/50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring",
+        className
+      )}
     >
       {children}
     </Link>

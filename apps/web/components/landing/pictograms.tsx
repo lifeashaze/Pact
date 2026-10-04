@@ -122,44 +122,26 @@ export function Shaker({ hue }: Props) {
   )
 }
 
-// Violet: asleep on time, with drifting Zs
-export function Sleeper({ hue }: Props) {
+// Violet: heads down at the desk, typing in short bursts
+export function Worker({ hue }: Props) {
   const c = hueVar(hue)
-  const still = useReducedMotion()
+  const t = useLoop(0.9, [0, 0.25, 0.5, 0.75, 1])
+  const rest = "M90 84 L112 106 L140 94"
   return (
     <svg viewBox="0 0 200 200" aria-hidden className="size-full overflow-visible">
       <g stroke={c} strokeWidth={STROKE} strokeLinecap="round" strokeLinejoin="round" fill="none">
-        <path d="M30 104 L30 172" />
-        <path d="M30 152 L172 152 L172 172" />
+        <path d="M112 100 L184 100 M172 100 L172 178" />
+        <path d="M46 92 L52 140 L94 140 M60 140 L60 178" />
+        <path d="M92 72 L80 122 L120 124 L118 176" />
+        <motion.path
+          initial={{ d: rest }}
+          animate={{ d: [rest, "M90 84 L112 105 L140 90", rest, "M90 84 L112 105 L140 92", rest] }}
+          transition={t}
+        />
       </g>
-      <circle cx={60} cy={122} r={15} fill={c} />
-      <motion.path
-        d="M84 144 V128 Q84 120 92 120 H116 Q132 98 148 120 H160 Q170 120 170 130 V144 Z"
-        fill={c}
-        style={{ originX: "127px", originY: "144px", transformBox: "view-box" }}
-        animate={still ? undefined : { scaleY: [1, 1.07, 1] }}
-        transition={still ? undefined : { duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
-      />
-      {[
-        { x: 88, y: 92, s: 20 },
-        { x: 108, y: 66, s: 27 },
-        { x: 132, y: 36, s: 34 },
-      ].map((z, i) => (
-        <motion.text
-          key={i}
-          x={z.x}
-          y={z.y}
-          fill={c}
-          fontSize={z.s}
-          fontWeight={700}
-          style={{ fontFamily: "var(--font-display)" }}
-          initial={{ opacity: 1 }}
-          animate={still ? undefined : { opacity: [0, 1, 1, 0], y: [8, 0, -4, -12] }}
-          transition={still ? undefined : { duration: 3.4, repeat: Infinity, delay: i * 0.5, times: [0, 0.2, 0.7, 1] }}
-        >
-          z
-        </motion.text>
-      ))}
+      <circle cx={98} cy={48} r={15} fill={c} />
+      <path d="M130 93 H168" stroke={c} strokeWidth={8} strokeLinecap="round" />
+      <path d="M166 93 L178 54" stroke={c} strokeWidth={10} strokeLinecap="round" />
     </svg>
   )
 }

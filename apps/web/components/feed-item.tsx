@@ -22,7 +22,7 @@ export function FeedItemView({ item, compact = false }: { item: FeedItem; compac
   const name = member.isYou ? "You" : member.name
 
   return (
-    <article className="flex gap-3">
+    <article className="group/item flex gap-3">
       <Link href={`/squad/${member.id}`} className="rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
         <Avatar member={member} size={40} />
       </Link>
@@ -65,9 +65,12 @@ export function FeedItemView({ item, compact = false }: { item: FeedItem; compac
                   animate={mine ? { scale: [1, 1.2, 1] } : { scale: 1 }}
                   transition={{ duration: 0.3 }}
                   className={cn(
-                    "flex h-8 items-center gap-1 rounded-full border px-2.5 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                    "flex h-8 items-center gap-1 rounded-full border px-2.5 text-sm transition-[color,background-color,border-color,opacity] focus-visible:outline-2 focus-visible:outline-ring",
                     mine ? "border-foreground bg-muted" : "border-border hover:bg-muted",
-                    !by.length && "opacity-60 hover:opacity-100"
+                    !by.length && "opacity-60 hover:opacity-100",
+                    // With a mouse on desktop, unused reactions wait until you point at the item or tab to them
+                    !by.length &&
+                      "lg:pointer-fine:opacity-0 lg:pointer-fine:group-focus-within/item:opacity-100 lg:pointer-fine:group-hover/item:opacity-100"
                   )}
                 >
                   <span>{emoji}</span>

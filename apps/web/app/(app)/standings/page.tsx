@@ -13,7 +13,9 @@ import {
   type Member,
   type Season,
   type SeasonLogs,
+  dayResult,
   weightSeries,
+  workoutGoal,
 } from "@/lib/season"
 
 type Period = "week" | "last" | "season"
@@ -50,14 +52,26 @@ function ranked(list: ReturnType<typeof scoresFor>) {
 
 export default function StandingsPage() {
   const season = useSeason()
-  const { TODAY, shortDate, weekOf, weekLabel, weekScore, started, longDate } =
-    season
+  const {
+    TODAY,
+    shortDate,
+    weekOf,
+    weekLabel,
+    weekScore,
+    seasonScore,
+    streak,
+    workoutsInWeek,
+    started,
+    longDate,
+  } = season
   const { logs, members } = useSquad()
   const [period, setPeriod] = React.useState<Period>("week")
   const current = ranked(scoresFor(season, members, logs, period))
   // Movement compares against the same table one week earlier
   const before = ranked(scoresFor(season, members, logs, period, 1))
   const week = weekOf(TODAY)
+  const moves = (id: string, i: number) =>
+    before.findIndex((b) => b.member.id === id) - i
 
   const subtitle =
     period === "week"
@@ -93,7 +107,7 @@ export default function StandingsPage() {
 
   if (!started) {
     return (
-      <div className="mx-auto grid max-w-5xl gap-6 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10">
+      <div className="mx-auto grid max-w-6xl gap-6 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10">
         <header className="px-1 pe-14 lg:pe-1">
           <h1 className="font-display text-5xl leading-none font-semibold tracking-tight">
             Standings
@@ -109,7 +123,7 @@ export default function StandingsPage() {
   }
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-6 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10">
+    <div className="mx-auto grid max-w-6xl gap-6 px-4 pt-6 sm:px-6 lg:px-10 lg:pt-10">
       <header className="px-1 pe-14 lg:pe-1">
         <h1 className="font-display text-5xl leading-none font-semibold tracking-tight">
           Standings
@@ -121,42 +135,193 @@ export default function StandingsPage() {
         </p>
       </header>
 
-      <section className="rounded-3xl bg-card p-3 sm:p-4">
+      <section className="rounded-3xl bg-card p-3 sm:p-4 lg:p-5">
         <LayoutGroup>
-          <div
-            role="tablist"
-            aria-label="Period"
-            className="flex gap-1 rounded-full bg-muted p-1"
-          >
-            {periods.map((p) => (
-              <button
-                key={p.id}
-                role="tab"
-                aria-selected={period === p.id}
-                onClick={() => setPeriod(p.id)}
-                className="relative h-10 flex-1 rounded-full text-sm font-semibold text-muted-foreground transition-colors focus-visible:outline-2 focus-visible:outline-ring aria-selected:text-foreground"
-              >
-                {period === p.id && (
-                  <motion.span
-                    layoutId="period-pill"
-                    className="absolute inset-0 rounded-full bg-card shadow-sm"
-                  />
-                )}
-                <span className="relative">{p.label}</span>
-              </button>
-            ))}
+          {/* Desktop puts the period picker and its dates on one toolbar row */}
+          <div className="lg:flex lg:items-center lg:justify-between lg:gap-6">
+            <div
+              role="tablist"
+              aria-label="Period"
+              onKeyDown={(e) => {
+                const step =
+                  e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0
+                if (!step) return
+                const i = periods.findIndex((p) => p.id === period)
+                const next =
+                  periods[(i + step + periods.length) % periods.length]!
+                setPeriod(next.id)
+                e.currentTarget
+                  .querySelector<HTMLButtonElement>(
+                    `[data-period="${next.id}"]`
+                  )
+                  ?.focus()
+              }}
+              className="flex gap-1 rounded-full bg-muted p-1 lg:w-fit"
+            >
+              {periods.map((p) => (
+                <button
+                  key={p.id}
+                  role="tab"
+                  data-period={p.id}
+                  aria-selected={period === p.id}
+                  tabIndex={period === p.id ? 0 : -1}
+                  onClick={() => setPeriod(p.id)}
+                  className="relative h-10 flex-1 rounded-full text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-selected:text-foreground lg:flex-none lg:px-5"
+                >
+                  {period === p.id && (
+                    <motion.span
+                      layoutId="period-pill"
+                      className="absolute inset-0 rounded-full bg-card shadow-sm"
+                    />
+                  )}
+                  <span className="relative">{p.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <p className="px-3 pt-4 pb-1 text-sm text-muted-foreground lg:p-0">
+              {subtitle}
+            </p>
           </div>
 
-          <p className="px-3 pt-4 pb-1 text-sm text-muted-foreground">
-            {subtitle}
-          </p>
+          {/* Desktop: the full table, with the context behind each rank */}
+          <table className="mt-4 w-full border-separate border-spacing-0 max-lg:hidden">
+            <caption className="sr-only">
+              {`Standings, ${periods.find((p) => p.id === period)!.label.toLowerCase()}: ${subtitle}`}
+            </caption>
+            <thead className="text-sm text-muted-foreground">
+              <tr>
+                <th
+                  scope="col"
+                  className="w-12 px-3 pb-2 text-start font-medium"
+                >
+                  <span className="sr-only">Rank</span>
+                </th>
+                <th scope="col" className="px-3 pb-2 text-start font-medium">
+                  Member
+                </th>
+                <th
+                  scope="col"
+                  className="w-[32%] px-3 pb-2 text-end font-medium"
+                >
+                  Hit rate
+                </th>
+                {period !== "season" && (
+                  <th scope="col" className="px-3 pb-2 text-end font-medium">
+                    Season
+                  </th>
+                )}
+                <th scope="col" className="px-3 pb-2 text-end font-medium">
+                  Streak
+                </th>
+                <th scope="col" className="px-3 pb-2 text-end font-medium">
+                  Workouts this week
+                </th>
+                <th scope="col" className="px-3 pb-2 text-end font-medium">
+                  Today
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {current.map((row, i) => {
+                const m = row.member
+                const l = logs[m.id] ?? []
+                const wGoal = workoutGoal(m)
+                const today = l[TODAY]
+                const r = dayResult(m, today)
+                const cell =
+                  "px-3 py-3 transition-colors group-hover:bg-muted/60 group-focus-within:bg-muted/60 first:rounded-s-2xl last:rounded-e-2xl"
+                return (
+                  <motion.tr key={m.id} layout className="group relative">
+                    <td
+                      className={cn(
+                        cell,
+                        "font-display text-2xl font-semibold text-muted-foreground tabular-nums"
+                      )}
+                    >
+                      {i + 1}
+                    </td>
+                    <td className={cell}>
+                      <div className="flex items-center gap-3">
+                        <Avatar member={m} size={40} />
+                        {/* The link covers the whole row, so any cell is a way in */}
+                        <Link
+                          href={`/squad/${m.id}`}
+                          className="rounded font-semibold after:absolute after:inset-0 after:content-[''] focus-visible:outline-2 focus-visible:outline-ring"
+                        >
+                          {m.isYou ? "You" : m.name}
+                        </Link>
+                        <Movement moved={moves(m.id, i)} />
+                      </div>
+                    </td>
+                    <td className={cell}>
+                      <div className="flex items-center gap-4">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{ background: hueVar(m.hue) }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${row.score * 100}%` }}
+                            transition={{
+                              type: "spring",
+                              stiffness: 200,
+                              damping: 30,
+                            }}
+                          />
+                        </div>
+                        <span className="w-14 text-end font-display text-2xl font-semibold tabular-nums">
+                          {pct(row.score)}
+                        </span>
+                      </div>
+                    </td>
+                    {period !== "season" && (
+                      <td className={cn(cell, "text-end tabular-nums")}>
+                        {pct(seasonScore(m, l))}
+                      </td>
+                    )}
+                    <td className={cn(cell, "text-end tabular-nums")}>
+                      {streak(l)}{" "}
+                      <span className="text-muted-foreground">
+                        {streak(l) === 1 ? "day" : "days"}
+                      </span>
+                    </td>
+                    <td className={cn(cell, "text-end tabular-nums")}>
+                      {wGoal ? (
+                        <>
+                          {workoutsInWeek(l, week)}
+                          <span className="text-muted-foreground">
+                            {" "}
+                            / {wGoal.weekly}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">–</span>
+                      )}
+                    </td>
+                    <td className={cn(cell, "text-end tabular-nums")}>
+                      {!today ? (
+                        <span className="text-muted-foreground">Not yet</span>
+                      ) : r.total ? (
+                        <>
+                          {r.hit}
+                          <span className="text-muted-foreground">
+                            {" "}
+                            of {r.total} goals
+                          </span>
+                        </>
+                      ) : (
+                        "Checked in"
+                      )}
+                    </td>
+                  </motion.tr>
+                )
+              })}
+            </tbody>
+          </table>
 
-          <ol className="grid">
+          <ol className="grid lg:hidden">
             {current.map((row, i) => {
-              const prev = before.findIndex(
-                (b) => b.member.id === row.member.id
-              )
-              const moved = prev - i
+              const moved = moves(row.member.id, i)
               return (
                 <motion.li key={row.member.id} layout className="rounded-2xl">
                   <Link
@@ -200,7 +365,12 @@ export default function StandingsPage() {
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="min-w-0 rounded-3xl bg-card p-5 sm:p-6">
+        <section
+          className={cn(
+            "min-w-0 rounded-3xl bg-card p-5 sm:p-6",
+            weightChange.length === 0 && "lg:col-span-2"
+          )}
+        >
           <h2 className="font-display text-2xl font-semibold tracking-tight">
             Hit rate by week
           </h2>

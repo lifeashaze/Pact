@@ -29,7 +29,7 @@ export function Wordmark({ className, size = 28 }: { className?: string; size?: 
   return (
     <span className={cn("inline-flex items-center gap-2", className)}>
       <Mark size={size} />
-      <span className="font-display text-2xl leading-none font-bold tracking-tight">Pact90</span>
+      <span className="font-display text-2xl leading-none font-bold tracking-tight">Pact</span>
     </span>
   )
 }

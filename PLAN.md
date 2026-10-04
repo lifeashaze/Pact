@@ -1,4 +1,4 @@
-# Pact90 build plan
+# Pact build plan
 
 Season: Thu 1 Oct to Thu 31 Dec 2026 (92 days). Today is Sun 27 Sep, so the real app has to work by Thursday.
 
@@ -26,14 +26,8 @@ Onboarding asks what people want to work on, then turns each pick into goals on 
 | Weight | Start weight, goal weight, daily weigh-in (not scored) | Hit or miss (squad sees % change only) |
 | Steps | Daily step target | Everything |
 | Food | Protein, calories, no junk, no added sugar, home-cooked (pick any) | Everything |
-| Water | Litres a day | Everything |
-| Sleep | Bedtime check (renamable) and/or hours | Everything |
 | Habits | Up to 6 custom yes/no habits, with presets | Everything |
-| Reading | Pages a day | Everything |
 | Deep work | Focused hours a day | Everything |
-| Screen time | Minutes under a daily limit | Everything |
-| Spending | Daily limit in £/$/€/₹, optional no-spend days | Hit or miss |
-| Mood | 1 to 5, never scored | Just me |
 
 Privacy per module: Everything (numbers visible), Hit or miss (only whether you hit it), Just me (hidden, not scored). Enforced on the server in `lib/squad-data.ts`.
 
@@ -117,6 +111,6 @@ The landing page still uses a made-up demo squad (`lib/demo.ts`) for its preview
 
 ## Phase 5: launch
 
-- Own Google OAuth client with Pact90 branding, redirect URI `{NEON_AUTH_BASE_URL}/callback/google`.
+- Own Google OAuth client with Pact branding, redirect URI `{NEON_AUTH_BASE_URL}/callback/google`.
 - Vercel project, env vars (`DATABASE_URL`, `NEON_AUTH_BASE_URL`, `NEON_AUTH_COOKIE_SECRET`, `ADMIN_EMAILS`), production domain added to Neon Auth trusted domains, wildcard for previews.
 - Custom SMTP is not needed while we are Google-only.

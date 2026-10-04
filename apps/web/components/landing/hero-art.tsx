@@ -5,14 +5,14 @@ import { animate, motion, useInView, useReducedMotion } from "motion/react"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { hueTint, hueVar } from "@/components/bits"
-import { Lifter, Runner, Shaker, Sleeper } from "@/components/landing/pictograms"
+import { Lifter, Runner, Shaker, Worker } from "@/components/landing/pictograms"
 import type { Hue } from "@/lib/season"
 
 const tiles: { hue: Hue; Figure: (p: { hue: Hue }) => React.JSX.Element; goal: string; week: number }[] = [
   { hue: "blue", Figure: Lifter, goal: "5 workouts a week", week: 4 },
   { hue: "orange", Figure: Runner, goal: "10,000 steps", week: 6 },
   { hue: "aqua", Figure: Shaker, goal: "Protein, 110 g", week: 5 },
-  { hue: "violet", Figure: Sleeper, goal: "In bed by 12", week: 3 },
+  { hue: "violet", Figure: Worker, goal: "2 h deep work", week: 3 },
 ]
 
 const figurePad = ["pe-[30%] pt-2", "ps-[30%] pt-2", "pe-[30%] pb-2", "ps-[30%] pb-2"]
@@ -65,12 +65,13 @@ function WeekDots({ hue, hit, align, delay }: { hue: Hue; hit: number; align: "s
   )
 }
 
+// 1 October to 31 December
 const DAYS = 92
 
 // Server and browser trig can differ in the last digits, which breaks hydration
 const round = (v: number) => Math.round(v * 100) / 100
 
-// 92 ticks, one per day of the season, drawn in as the number counts up
+// One tick per day of the season, drawn in around the end date
 function SeasonDial() {
   const ref = React.useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true })
@@ -106,7 +107,7 @@ function SeasonDial() {
       transition={{ type: "spring", stiffness: 240, damping: 18, delay: 0.35 }}
       className="absolute top-1/2 left-1/2 aspect-square w-[40%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-card shadow-[0_0_0_10px_var(--background),0_24px_48px_-20px_rgb(0_0_0/0.25)] sm:shadow-[0_0_0_12px_var(--background),0_24px_48px_-20px_rgb(0_0_0/0.25)]"
     >
-      <svg viewBox="0 0 200 200" className="size-full" role="img" aria-label="92 days, 1 October to 31 December">
+      <svg viewBox="0 0 200 200" className="size-full" role="img" aria-label="Season one, 1 October to 31 December">
         {Array.from({ length: DAYS }, (_, d) => {
           const a = (d / DAYS) * Math.PI * 2 - Math.PI / 2
           const month = months.some((m) => m.at === d)
@@ -142,9 +143,12 @@ function SeasonDial() {
             </text>
           )
         })}
+        <text x={100} y={74} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--muted-foreground)">
+          Ends
+        </text>
         <text
           x={100}
-          y={98}
+          y={108}
           textAnchor="middle"
           dominantBaseline="middle"
           fontSize={56}
@@ -152,10 +156,7 @@ function SeasonDial() {
           fill="var(--foreground)"
           style={{ fontFamily: "var(--font-display)", fontVariantNumeric: "tabular-nums" }}
         >
-          {n}
-        </text>
-        <text x={100} y={130} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--muted-foreground)">
-          days
+          31
         </text>
       </svg>
     </motion.div>

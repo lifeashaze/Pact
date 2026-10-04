@@ -21,7 +21,7 @@ export type Goal = {
   // Workouts count toward a weekly target instead of a daily one
   weekly?: number
   startValue?: number
-  // Weight and mood are tracked and charted but never scored
+  // Weight is tracked and charted but never scored
   scored: boolean
   visibility: "squad" | "summary" | "private"
 }
@@ -118,14 +118,11 @@ export function latestAverage(logs: (DayLog | undefined)[]) {
   return undefined
 }
 
-const WHOLE_UNITS = new Set(["kcal", "steps", "min", "pages"])
-const PREFIX_UNITS = new Set(["£", "$", "€", "₹"])
+const WHOLE_UNITS = new Set(["kcal", "steps"])
 
 export function formatNumber(value: number, unit?: string) {
   const n = unit && WHOLE_UNITS.has(unit) ? Math.round(value).toLocaleString("en-GB") : `${value}`
   if (!unit) return n
-  if (PREFIX_UNITS.has(unit)) return `${unit}${n}`
-  if (unit === "/5") return `${n}/5`
   return `${n} ${unit}`
 }
 

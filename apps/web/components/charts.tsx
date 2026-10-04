@@ -26,6 +26,32 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const
 }
 
+// Phones keep the base height; wide desktop cards grow taller so the chart doesn't flatten out
+function fitHeight(width: number, base: number, ratio: number, max: number) {
+  return Math.round(Math.min(max, Math.max(base, width * ratio)))
+}
+
+// Hover with a pointer, or focus the chart and step with the arrow keys, so no value is pointer-only
+function useScrub(last: number, first = 0) {
+  const [hover, setHover] = React.useState<number | null>(null)
+  const keys = {
+    tabIndex: 0,
+    onFocus: () => setHover((h) => h ?? last),
+    onBlur: () => setHover(null),
+    onKeyDown: (e: React.KeyboardEvent) => {
+      const step = ({ ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 } as Record<string, number>)[e.key]
+      const to = e.key === "Home" ? first : e.key === "End" ? last : step !== undefined ? (hover ?? last) + step : undefined
+      if (to === undefined) return
+      e.preventDefault()
+      setHover(Math.min(Math.max(to, first), last))
+    },
+  }
+  return [hover, setHover, keys] as const
+}
+
+const focusRing = "rounded-lg outline-offset-4 focus-visible:outline-2 focus-visible:outline-ring"
+const keysHint = " Use the arrow keys to step through it."
+
 function linear(d0: number, d1: number, r0: number, r1: number) {
   return (v: number) => r0 + ((v - d0) / (d1 - d0 || 1)) * (r1 - r0)
 }
@@ -96,9 +122,9 @@ export function WeightChart({ member, logs }: { member: Member; logs: Logs }) {
   const { SEASON_DAYS, TODAY, shortDate, weekdayDate } = useSeason()
   const [ref, width] = useWidth<HTMLDivElement>()
   const inView = useInView(ref, { once: true, amount: 0.4 })
-  const [hover, setHover] = React.useState<number | null>(null)
+  const [hover, setHover, keys] = useScrub(TODAY)
   const series = weightSeries(logs)
-  const height = 220
+  const height = fitHeight(width, 220, 0.3, 320)
   const m = { top: 16, right: 64, bottom: 28, left: 36 }
 
   const monthTicks = [0, 31, 61, SEASON_DAYS - 1]
@@ -135,11 +161,12 @@ export function WeightChart({ member, logs }: { member: Member; logs: Logs }) {
           <svg
             width={width}
             height={height}
-            className="overflow-visible"
+            className={cn("overflow-visible", focusRing)}
             onPointerMove={onMove}
             onPointerLeave={() => setHover(null)}
+            {...keys}
             role="img"
-            aria-label={`${member.name}'s weight, 7-day average, from ${member.startWeight}${u} on ${shortDate(0)} to ${last?.avg?.toFixed(1)}${u} today.${goal !== undefined ? ` Goal ${goal}${u}.` : ""}`}
+            aria-label={`${member.name}'s weight, 7-day average, from ${member.startWeight}${u} on ${shortDate(0)} to ${last?.avg?.toFixed(1)}${u} today.${goal !== undefined ? ` Goal ${goal}${u}.` : ""}${keysHint}`}
           >
             {ticks.map((t) => (
               <g key={t}>
@@ -346,9 +373,9 @@ export function TargetBars({ member, goal, logs }: { member: Member; goal: Goal;
   const { TODAY, dateOf, weekdayDate } = useSeason()
   const [ref, width] = useWidth<HTMLDivElement>()
   const inView = useInView(ref, { once: true, amount: 0.4 })
-  const [hover, setHover] = React.useState<number | null>(null)
+  const [hover, setHover, keys] = useScrub(13)
   const days = Array.from({ length: 14 }, (_, i) => TODAY - 13 + i)
-  const height = 200
+  const height = fitHeight(width, 200, 0.32, 280)
   const m = { top: 20, right: 52, bottom: 26, left: 44 }
   const vals = days.map((d) => logs[d]?.numbers[goal.id])
   const max = Math.max(goal.target!, ...vals.filter((v): v is number => v !== undefined)) * 1.12
@@ -363,7 +390,14 @@ export function TargetBars({ member, goal, logs }: { member: Member; goal: Goal;
     <figure>
       <div ref={ref} className="relative" style={{ height }} onPointerLeave={() => setHover(null)}>
         {width > 0 && (
-          <svg width={width} height={height} className="overflow-visible" role="img" aria-label={`${member.name}'s ${goal.label.toLowerCase()}, last 14 days. Goal hit on ${hitDays} of 14 days.`}>
+          <svg
+            width={width}
+            height={height}
+            className={cn("overflow-visible", focusRing)}
+            {...keys}
+            role="img"
+            aria-label={`${member.name}'s ${goal.label.toLowerCase()}, last 14 days. Goal hit on ${hitDays} of 14 days.${keysHint}`}
+          >
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={m.left} x2={width - m.right} y1={y(t)} y2={y(t)} stroke="var(--grid)" />
@@ -446,11 +480,11 @@ export function WeeklyWorkouts({ member, logs }: { member: Member; logs: Logs })
   const { TODAY, WEEKS, shortDate, weekDays, weekOf, workoutsInWeek } = useSeason()
   const [ref, width] = useWidth<HTMLDivElement>()
   const inView = useInView(ref, { once: true, amount: 0.4 })
-  const [hover, setHover] = React.useState<number | null>(null)
   const target = workoutGoal(member)?.weekly ?? 0
   const weeks = Array.from({ length: WEEKS - 1 }, (_, i) => i) // week 14 is a single day
   const current = weekOf(TODAY)
-  const height = 180
+  const [hover, setHover, keys] = useScrub(Math.min(current, weeks.length - 1))
+  const height = fitHeight(width, 180, 0.3, 240)
   const m = { top: 20, right: 12, bottom: 26, left: 28 }
   const max = 7
   const y = linear(0, max, height - m.bottom, m.top)
@@ -461,7 +495,14 @@ export function WeeklyWorkouts({ member, logs }: { member: Member; logs: Logs })
     <figure>
       <div ref={ref} className="relative" style={{ height }} onPointerLeave={() => setHover(null)}>
         {width > 0 && (
-          <svg width={width} height={height} className="overflow-visible" role="img" aria-label={`${member.name}'s workouts per week against a target of ${target}.`}>
+          <svg
+            width={width}
+            height={height}
+            className={cn("overflow-visible", focusRing)}
+            {...keys}
+            role="img"
+            aria-label={`${member.name}'s workouts per week against a target of ${target}.${keysHint}`}
+          >
             {[0, 2, 4, 6].map((t) => (
               <g key={t}>
                 <line x1={m.left} x2={width - m.right} y1={y(t)} y2={y(t)} stroke="var(--grid)" />
@@ -482,6 +523,7 @@ export function WeeklyWorkouts({ member, logs }: { member: Member; logs: Logs })
                     <motion.path
                       d={`M${cx - barW / 2},${height - m.bottom} V${top + 4} q0,-4 4,-4 H${cx + barW / 2 - 4} q4,0 4,4 V${height - m.bottom} Z`}
                       fill={w === current ? hueTint(member.hue, 45) : hueVar(member.hue)}
+                      fillOpacity={hover === null || hover === w ? 1 : 0.55}
                       style={{ transformBox: "fill-box", transformOrigin: "bottom" }}
                       initial={{ scaleY: 0 }}
                       animate={{ scaleY: inView ? 1 : 0 }}
@@ -539,7 +581,7 @@ export function SquadLines({
   format,
   axisFormat = format,
   label,
-  height = 240,
+  height: baseHeight = 240,
 }: {
   series: SquadSeries[]
   xLabel: (i: number) => string
@@ -551,8 +593,12 @@ export function SquadLines({
 }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const inView = useInView(ref, { once: true, amount: 0.4 })
-  const [hover, setHover] = React.useState<number | null>(null)
   const n = Math.max(...series.map((s) => s.values.length))
+  const [hover, setHover, keys] = useScrub(n - 1)
+  // Pointing at a legend entry or end label picks one line out of the tangle
+  const [spot, setSpot] = React.useState<string | null>(null)
+  const dim = (id: string) => spot !== null && spot !== id
+  const height = fitHeight(width, baseHeight, 0.36, baseHeight * 1.4)
   const m = { top: 16, right: 86, bottom: 28, left: 40 }
   const all = series.flatMap((s) => s.values).filter((v): v is number => v !== undefined)
   const pad = (Math.max(...all) - Math.min(...all)) * 0.12 || 1
@@ -583,7 +629,12 @@ export function SquadLines({
     <figure>
       <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm" aria-label="Legend">
         {series.map((s) => (
-          <li key={s.member.id} className="flex items-center gap-1.5">
+          <li
+            key={s.member.id}
+            className={cn("flex items-center gap-1.5 transition-opacity", dim(s.member.id) && "opacity-40")}
+            onPointerEnter={() => setSpot(s.member.id)}
+            onPointerLeave={() => setSpot(null)}
+          >
             <span className="h-0.5 w-4 rounded-full" style={{ background: hueVar(s.member.hue) }} />
             {s.member.name}
           </li>
@@ -591,7 +642,16 @@ export function SquadLines({
       </ul>
       <div ref={ref} className="relative" style={{ height }}>
         {width > 0 && (
-          <svg width={width} height={height} className="overflow-visible" onPointerMove={onMove} onPointerLeave={() => setHover(null)} role="img" aria-label={label}>
+          <svg
+            width={width}
+            height={height}
+            className={cn("overflow-visible", focusRing)}
+            onPointerMove={onMove}
+            onPointerLeave={() => setHover(null)}
+            {...keys}
+            role="img"
+            aria-label={`${label}.${keysHint}`}
+          >
             {ticks.map((t) => (
               <g key={t}>
                 <line x1={m.left} x2={width - m.right} y1={y(t)} y2={y(t)} stroke="var(--grid)" />
@@ -617,9 +677,11 @@ export function SquadLines({
                   d={d}
                   fill="none"
                   stroke={hueVar(s.member.hue)}
-                  strokeWidth={2}
+                  strokeWidth={spot === s.member.id ? 3 : 2}
+                  strokeOpacity={dim(s.member.id) ? 0.2 : 1}
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  className="transition-[stroke-opacity]"
                   initial={{ pathLength: 0 }}
                   animate={{ pathLength: inView ? 1 : 0 }}
                   transition={{ duration: 1, delay: si * 0.12, ease: [0.33, 1, 0.68, 1] }}
@@ -627,7 +689,12 @@ export function SquadLines({
               )
             })}
             {ends.map((e, k) => (
-              <g key={e.s.member.id}>
+              <g
+                key={e.s.member.id}
+                opacity={dim(e.s.member.id) ? 0.35 : 1}
+                onPointerEnter={() => setSpot(e.s.member.id)}
+                onPointerLeave={() => setSpot(null)}
+              >
                 <circle cx={x(e.i)} cy={e.y} r={4.5} fill={hueVar(e.s.member.hue)} stroke="var(--card)" strokeWidth={2} />
                 {Math.abs(labelY[k]! - e.y) > 2 && (
                   <line x1={x(e.i) + 6} y1={e.y} x2={x(e.i) + 14} y2={labelY[k]} stroke="var(--axis)" />
@@ -656,7 +723,7 @@ export function SquadLines({
               .filter((s) => s.values[hover] !== undefined)
               .sort((a, b) => b.values[hover]! - a.values[hover]!)
               .map((s) => (
-                <div key={s.member.id} className="flex items-center justify-between gap-2">
+                <div key={s.member.id} className={cn("flex items-center justify-between gap-2", spot === s.member.id && "font-semibold")}>
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     <span className="size-2 rounded-full" style={{ background: hueVar(s.member.hue) }} />
                     {s.member.name}

@@ -5,14 +5,14 @@ import { getSeasonView } from "@/components/season-views"
 import { useSquad, useSeason } from "@/components/squad-store"
 
 // The home card. Which view it shows is picked on /season
-export function SeasonTrack({ index }: { index?: number }) {
+export function SeasonTrack({ index, className }: { index?: number; className?: string }) {
   const season = useSeason()
   const { SEASON_DAYS, TODAY } = season
   const { seasonView } = useSquad()
   const view = getSeasonView(seasonView)
 
   return (
-    <HomeCard labelledBy="season-title" index={index}>
+    <HomeCard labelledBy="season-title" index={index} className={className}>
       <CardHeader
         id="season-title"
         title="The season"

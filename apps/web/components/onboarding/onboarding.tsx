@@ -3,15 +3,15 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
-import { RiAddLine, RiArrowLeftLine, RiCloseLine, RiLockLine } from "@remixicon/react"
+import { RiAddLine, RiArrowLeftLine, RiCheckLine, RiCloseLine, RiLockLine } from "@remixicon/react"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { hueTint, hueVar } from "@/components/bits"
-import { Mark } from "@/components/brand"
+import { Mark, Wordmark } from "@/components/brand"
+import { HeroArt } from "@/components/landing/hero-art"
 import { MODULE_ICONS } from "@/components/onboarding/module-icons"
 import { Segmented, Stepper, Tick } from "@/components/onboarding/controls"
 import {
-  CURRENCIES,
   MODULES,
   MODULE_GROUPS,
   type ModuleDef,
@@ -40,7 +40,6 @@ type ModState = {
   metrics: Record<string, MetricState>
   custom: { key: string; label: string }[]
   start?: number
-  currency: string
 }
 type State = Record<ModuleId, ModState>
 
@@ -68,7 +67,6 @@ function initialState(goals: OnboardingGoal[]): State {
       metrics,
       custom: mine.filter((g) => g.metric.startsWith("custom-")).map((g) => ({ key: g.metric, label: g.label })),
       start: weight?.startValue ?? undefined,
-      currency: mine.find((g) => g.metric === "spend")?.unit ?? "£",
     }
     if (mod.id === "weight" && weight) out.weight.metrics.weight!.target = weight.target ?? undefined
   }
@@ -94,7 +92,6 @@ function toInput(state: State, displayName: string, hue: Hue): SetupInput {
         target: mod.id === "weight" ? weightTarget(s, mod) : m.target,
         weeklyTarget: m.weekly,
         startValue: mod.askStart ? (s.start ?? mod.askStart.default) : undefined,
-        unit: mod.id === "budget" && def.key === "spend" ? s.currency : undefined,
       })
     }
     for (const c of s.custom) goals.push({ module: mod.id, metric: c.key, label: c.label })
@@ -173,6 +170,9 @@ export function Onboarding(props: {
     setError(null)
     scroller.current?.scrollTo({ top: 0 })
   }
+  // Editing starts on modules, so stepping back from there (or from the first step) leaves
+  const cancels = props.editing && index <= 1
+  const back = () => (index === 0 || cancels ? props.editing && router.back() : go(index - 1))
 
   const update = (id: ModuleId, fn: (s: ModState) => ModState) => setState((all) => ({ ...all, [id]: fn(all[id]) }))
 
@@ -192,90 +192,300 @@ export function Onboarding(props: {
     }
   }
 
+  const next = () => {
+    if (blocker || saving) return
+    if (step === "review") save()
+    else go(index + 1)
+  }
+
+  // Keyboard: Enter moves on, Escape leaves a field and then steps back. Forms and buttons keep their own Enter
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (done || e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      const el = e.target as HTMLElement
+      if (e.key === "Enter" && !el.closest("button, a, textarea, select, form")) {
+        e.preventDefault()
+        next()
+      } else if (e.key === "Escape") {
+        if (el.closest("input, textarea")) el.blur()
+        else back()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  })
+
   if (done) return <Done name={displayName} hue={hue} startDate={startDate} started={props.started} />
 
+  const status = error ?? blocker ?? (step === "modules" ? `${chosen.length} picked` : step === "review" ? `${scoredCount} goals count toward your score` : "")
+
   return (
-    <div className="flex h-svh flex-col">
-      {/* Top bar: back, progress, step count */}
-      <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 sm:px-6">
-        <button
-          type="button"
-          onClick={() => (index === 0 || (props.editing && index === 1) ? props.editing && router.back() : go(index - 1))}
-          aria-label={props.editing && index <= 1 ? "Cancel" : "Back"}
-          className={cn(
-            "grid size-10 shrink-0 place-items-center rounded-full bg-card text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
-            index === 0 && !props.editing && "invisible"
-          )}
-        >
-          {props.editing && index <= 1 ? <RiCloseLine className="size-5" /> : <RiArrowLeftLine className="size-5" />}
-        </button>
-        <div className="flex flex-1 gap-1.5" aria-hidden>
-          {STEPS.map((s, i) => (
-            <div key={s} className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-              <motion.div
-                className="h-full rounded-full"
-                style={{ background: hueVar(hue) }}
-                initial={false}
-                animate={{ width: i <= index ? "100%" : "0%" }}
-                transition={{ type: "spring", stiffness: 260, damping: 30 }}
-              />
-            </div>
-          ))}
-        </div>
-        <span className="w-12 shrink-0 text-end text-sm text-muted-foreground tabular-nums">
-          {index + 1} of {STEPS.length}
-        </span>
-      </div>
+    <div className="flex h-svh flex-col lg:flex-row">
+      {/* Desktop: steps down the side with a live summary of the season being built */}
+      <StepRail
+        steps={props.editing ? STEPS.slice(1) : [...STEPS]}
+        index={index}
+        canAdvance={!blocker}
+        onPick={go}
+        editing={props.editing}
+        hue={hue}
+        name={displayName}
+        image={props.image}
+        chosen={chosen}
+        goals={input.goals.length}
+        scored={scoredCount}
+        startDate={startDate}
+        started={props.started}
+      />
 
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-clip">
-        <div className="mx-auto w-full max-w-2xl px-4 pt-6 pb-10 sm:px-6 sm:pt-10">
-          <AnimatePresence mode="wait" custom={dir} initial={false}>
-            <motion.div
-              key={step}
-              custom={dir}
-              initial={{ opacity: 0, x: dir * 32 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: dir * -32 }}
-              transition={{ type: "spring", stiffness: 420, damping: 38 }}
-            >
-              {step === "you" && (
-                <YouStep
-                  name={displayName}
-                  setName={setDisplayName}
-                  image={props.image}
-                  hue={hue}
-                  setHue={setHue}
-                  taken={takenHues}
-                  startDate={startDate}
-                />
-              )}
-              {step === "modules" && <ModulesStep state={state} hue={hue} toggle={(id) => update(id, (s) => ({ ...s, on: !s.on }))} />}
-              {step === "targets" && <TargetsStep chosen={chosen} state={state} update={update} hue={hue} />}
-              {step === "privacy" && <PrivacyStep chosen={chosen} state={state} update={update} />}
-              {step === "review" && <ReviewStep chosen={chosen} state={state} hue={hue} startDate={startDate} started={props.started} />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* Sticky action bar */}
-      <div className="border-t border-border bg-background/90 backdrop-blur-lg">
-        <div className="mx-auto flex w-full max-w-2xl items-center gap-4 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
-          <p className={cn("min-w-0 flex-1 text-sm", error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
-            {error ?? blocker ?? (step === "modules" ? `${chosen.length} picked` : step === "review" ? `${scoredCount} goals count toward your score` : "")}
-          </p>
-          <motion.button
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Top bar: back, progress, step count. Phones and tablets only */}
+        <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-3 sm:px-6 lg:hidden">
+          <button
             type="button"
-            whileTap={{ scale: 0.97 }}
-            disabled={!!blocker || saving}
-            onClick={() => (step === "review" ? save() : go(index + 1))}
-            className="h-12 shrink-0 rounded-full bg-primary px-7 font-semibold text-primary-foreground transition-opacity disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            onClick={back}
+            aria-label={cancels ? "Cancel" : "Back"}
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-full bg-card text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+              index === 0 && !props.editing && "invisible"
+            )}
           >
-            {step === "review" ? (saving ? "Saving" : props.editing ? "Save changes" : "Start my season") : "Continue"}
-          </motion.button>
+            {cancels ? <RiCloseLine className="size-5" /> : <RiArrowLeftLine className="size-5" />}
+          </button>
+          <div className="flex flex-1 gap-1.5" aria-hidden>
+            {STEPS.map((s, i) => (
+              <div key={s} className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: hueVar(hue) }}
+                  initial={false}
+                  animate={{ width: i <= index ? "100%" : "0%" }}
+                  transition={{ type: "spring", stiffness: 260, damping: 30 }}
+                />
+              </div>
+            ))}
+          </div>
+          <span className="w-12 shrink-0 text-end text-sm text-muted-foreground tabular-nums">
+            {index + 1} of {STEPS.length}
+          </span>
+        </div>
+
+        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto overflow-x-clip">
+          <div className={cn("mx-auto w-full px-4 pt-6 pb-10 sm:px-6 sm:pt-10 lg:px-10 lg:pt-16 lg:pb-16", WIDTH)}>
+            <AnimatePresence mode="wait" custom={dir} initial={false}>
+              <motion.div
+                key={step}
+                custom={dir}
+                initial={{ opacity: 0, x: dir * 32 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: dir * -32 }}
+                transition={{ type: "spring", stiffness: 420, damping: 38 }}
+              >
+                {step === "you" && (
+                  <YouStep
+                    name={displayName}
+                    setName={setDisplayName}
+                    image={props.image}
+                    hue={hue}
+                    setHue={setHue}
+                    taken={takenHues}
+                    startDate={startDate}
+                  />
+                )}
+                {step === "modules" && <ModulesStep state={state} hue={hue} toggle={(id) => update(id, (s) => ({ ...s, on: !s.on }))} />}
+                {step === "targets" && <TargetsStep chosen={chosen} state={state} update={update} hue={hue} />}
+                {step === "privacy" && <PrivacyStep chosen={chosen} state={state} update={update} />}
+                {step === "review" && <ReviewStep chosen={chosen} state={state} hue={hue} startDate={startDate} started={props.started} />}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Action bar: sticky at the thumb on phones, an inline Back / Continue row under the content on desktop */}
+        <div className="border-t border-border bg-background/90 backdrop-blur-lg">
+          <div className={cn("mx-auto flex w-full items-center gap-4 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 lg:px-10 lg:pt-4 lg:pb-4", WIDTH)}>
+            <button
+              type="button"
+              onClick={back}
+              className={cn(
+                "hidden h-12 shrink-0 items-center gap-2 rounded-full ps-4 pe-5 font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring lg:inline-flex",
+                index === 0 && !props.editing && "invisible"
+              )}
+            >
+              {cancels ? <RiCloseLine className="size-5" /> : <RiArrowLeftLine className="size-5" />}
+              {cancels ? "Cancel" : "Back"}
+              <Kbd>Esc</Kbd>
+            </button>
+            <p className={cn("min-w-0 flex-1 text-sm lg:text-end", error ? "text-destructive" : "text-muted-foreground")} aria-live="polite">
+              {status}
+            </p>
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.97 }}
+              disabled={!!blocker || saving}
+              onClick={next}
+              className="inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full bg-primary px-7 font-semibold text-primary-foreground transition-[opacity,background-color] enabled:hover:bg-primary/90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {step === "review" ? (saving ? "Saving" : props.editing ? "Save changes" : "Start my season") : "Continue"}
+              <Kbd className="border-primary-foreground/25 text-primary-foreground/70">Enter</Kbd>
+            </motion.button>
+          </div>
         </div>
       </div>
     </div>
+  )
+}
+
+// Content and action bar share a width so Continue lines up with the edge of the cards
+const WIDTH = "max-w-2xl lg:max-w-3xl xl:max-w-4xl 2xl:max-w-5xl"
+
+// Keyboard hint, desktop only
+function Kbd({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <kbd
+      className={cn(
+        "hidden h-5.5 items-center rounded-md border border-border px-1.5 font-sans text-[0.6875rem] font-medium text-muted-foreground lg:inline-flex",
+        className
+      )}
+    >
+      {children}
+    </kbd>
+  )
+}
+
+const STEP_COPY: Record<Step, { title: string; detail: string }> = {
+  you: { title: "You", detail: "Name and colour" },
+  modules: { title: "Tools", detail: "What you're working on" },
+  targets: { title: "Targets", detail: "What a good day looks like" },
+  privacy: { title: "Privacy", detail: "What the squad sees" },
+  review: { title: "Check-in", detail: "What you'll fill in each day" },
+}
+
+function StepRail({
+  steps,
+  index,
+  canAdvance,
+  onPick,
+  editing,
+  hue,
+  name,
+  image,
+  chosen,
+  goals,
+  scored,
+  startDate,
+  started,
+}: {
+  steps: Step[]
+  index: number
+  canAdvance: boolean
+  onPick: (to: number) => void
+  editing: boolean
+  hue: Hue
+  name: string
+  image: string | null
+  chosen: ModuleDef[]
+  goals: number
+  scored: number
+  startDate: string
+  started: boolean
+}) {
+  return (
+    <aside className="hidden h-svh w-80 shrink-0 flex-col overflow-y-auto border-e border-border bg-card px-5 py-8 lg:flex xl:w-88">
+      <div className="px-3">
+        <Wordmark />
+        <p className="mt-10 text-sm font-semibold text-muted-foreground">{editing ? "Edit your goals" : "Set up your season"}</p>
+      </div>
+
+      <nav aria-label="Steps" className="mt-3">
+        <ol className="grid gap-1">
+          {steps.map((s, i) => {
+            const at = STEPS.indexOf(s)
+            const done = at < index
+            const current = at === index
+            // Go back to anything finished, or forward one when this step is complete
+            const reachable = done || (at === index + 1 && canAdvance)
+            return (
+              <li key={s}>
+                <button
+                  type="button"
+                  disabled={!reachable}
+                  onClick={() => onPick(at)}
+                  aria-current={current ? "step" : undefined}
+                  className="flex w-full items-center gap-3.5 rounded-2xl px-3 py-2.5 text-start transition-colors enabled:hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default aria-[current=step]:bg-muted"
+                >
+                  <span
+                    className={cn(
+                      "grid size-8 shrink-0 place-items-center rounded-full text-sm font-semibold tabular-nums transition-colors",
+                      !done && !current && "border border-border text-muted-foreground"
+                    )}
+                    style={
+                      done
+                        ? { background: hueVar(hue), color: "white" }
+                        : current
+                          ? { background: hueTint(hue, 14), boxShadow: `inset 0 0 0 2px ${hueVar(hue)}` }
+                          : undefined
+                    }
+                  >
+                    {done ? <RiCheckLine className="size-4" aria-label="Done" /> : i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className={cn("block font-semibold", !done && !current && "text-muted-foreground")}>{STEP_COPY[s].title}</span>
+                    <span className="block truncate text-sm text-muted-foreground">{STEP_COPY[s].detail}</span>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
+
+      {/* Live summary: updates as they pick */}
+      <section aria-label="Your season so far" className="mt-auto rounded-3xl bg-background p-5">
+        <div className="flex items-center gap-3">
+          <Face name={name} image={image} hue={hue} size={48} />
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{name.trim() || "Your name"}</p>
+            <p className="text-sm text-muted-foreground">{started ? "Season underway" : `Starts ${startDate}`}</p>
+          </div>
+        </div>
+        {chosen.length > 0 && (
+          <ul className="mt-4 flex flex-wrap gap-1.5">
+            {chosen.map((m) => {
+              const Icon = MODULE_ICONS[m.id]
+              return (
+                <li key={m.id} title={m.name} className="grid size-8 place-items-center rounded-xl" style={{ background: hueTint(hue, 14) }}>
+                  <Icon className="size-4" aria-label={m.name} />
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <p className="mt-4 text-sm text-muted-foreground">
+          {chosen.length
+            ? `${goals} ${goals === 1 ? "goal" : "goals"}, ${scored} scored`
+            : "Pick some tools and they'll show up here."}
+        </p>
+      </section>
+    </aside>
+  )
+}
+
+// Their photo (or initials) in their colour
+function Face({ name, image, hue, size }: { name: string; image: string | null; hue: Hue; size: number }) {
+  return (
+    <span
+      aria-hidden
+      className="grid shrink-0 place-items-center rounded-full font-display font-semibold transition-[background,box-shadow]"
+      style={{ width: size, height: size, fontSize: size * 0.36, background: hueTint(hue, 22), boxShadow: `inset 0 0 0 2.5px ${hueVar(hue)}` }}
+    >
+      {image ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" referrerPolicy="no-referrer" className="rounded-full object-cover" style={{ width: size - 10, height: size - 10 }} />
+      ) : (
+        initialsOf(name || "?")
+      )}
+    </span>
   )
 }
 
@@ -310,8 +520,8 @@ function YouStep({
   const first = name.trim().split(/\s+/)[0] || "there"
   return (
     <>
-      <StepTitle title={`Hey ${first}. Let's set up your 92 days.`} sub={`It takes about two minutes. The season starts ${startDate}.`} />
-      <div className="grid gap-8">
+      <StepTitle title={`Hey ${first}. Let's set up your season.`} sub={`It takes about two minutes. The season starts ${startDate}.`} />
+      <div className="grid gap-8 lg:max-w-xl">
         <label className="grid gap-2">
           <span className="font-semibold">The name your squad sees</span>
           <input
@@ -339,7 +549,7 @@ function YouStep({
                   onClick={() => setHue(h)}
                   className={cn(
                     "grid justify-items-center gap-2 rounded-2xl border bg-card px-2 pt-4 pb-3 transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed",
-                    on ? "border-transparent" : "border-border"
+                    on ? "border-transparent" : "border-border enabled:hover:border-foreground/25"
                   )}
                   style={on ? { background: hueTint(h, 12), boxShadow: `inset 0 0 0 2px ${hueVar(h)}` } : undefined}
                 >
@@ -374,7 +584,7 @@ function ModulesStep({ state, hue, toggle }: { state: State; hue: Hue; toggle: (
         {MODULE_GROUPS.map((group) => (
           <section key={group} className="grid gap-3">
             <h2 className="text-sm font-semibold text-muted-foreground">{group}</h2>
-            <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
               {MODULES.filter((m) => m.group === group).map((m) => {
                 const on = state[m.id].on
                 const Icon = MODULE_ICONS[m.id]
@@ -386,8 +596,11 @@ function ModulesStep({ state, hue, toggle }: { state: State; hue: Hue; toggle: (
                     aria-checked={on}
                     onClick={() => toggle(m.id)}
                     whileTap={{ scale: 0.98 }}
-                    className="flex items-start gap-3.5 rounded-2xl border bg-card p-4 text-start transition-colors focus-visible:outline-2 focus-visible:outline-ring"
-                    style={on ? { background: hueTint(hue, 10), borderColor: "transparent", boxShadow: `inset 0 0 0 2px ${hueVar(hue)}` } : { borderColor: "var(--border)" }}
+                    className={cn(
+                      "flex items-start gap-3.5 rounded-2xl border bg-card p-4 text-start transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                      on ? "border-transparent" : "border-border hover:border-foreground/25"
+                    )}
+                    style={on ? { background: hueTint(hue, 10), boxShadow: `inset 0 0 0 2px ${hueVar(hue)}` } : undefined}
                   >
                     <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted">
                       <Icon className="size-5" aria-hidden />
@@ -425,7 +638,7 @@ function TargetsStep({
   return (
     <>
       <StepTitle title="Set your targets" sub="Aim for something you can hit most days. A target you hit 80% of the time beats a heroic one you miss." />
-      <div className="grid gap-4">
+      <div className="grid gap-4 2xl:grid-cols-2 2xl:items-start">
         {chosen.map((mod) => (
           <ModuleCard key={mod.id} mod={mod}>
             <ModuleTargets mod={mod} s={state[mod.id]} set={(fn) => update(mod.id, fn)} hue={hue} />
@@ -524,7 +737,11 @@ function ModuleTargets({ mod, s, set, hue }: { mod: ModuleDef; s: ModState; set:
                 aria-label="New habit"
                 className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30"
               />
-              <button type="submit" disabled={!draft.trim()} className="flex h-11 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-40">
+              <button
+                type="submit"
+                disabled={!draft.trim()}
+                className="flex h-11 items-center gap-1 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground transition-[opacity,background-color] enabled:hover:bg-primary/90 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
                 <RiAddLine className="size-4" /> Add
               </button>
             </form>
@@ -534,7 +751,7 @@ function ModuleTargets({ mod, s, set, hue }: { mod: ModuleDef; s: ModState; set:
                   key={p}
                   type="button"
                   onClick={() => add(p)}
-                  className="flex h-9 items-center gap-1 rounded-full border border-dashed border-border px-3.5 text-sm text-muted-foreground hover:border-solid hover:text-foreground"
+                  className="flex h-9 items-center gap-1 rounded-full border border-dashed border-border px-3.5 text-sm text-muted-foreground hover:border-solid hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                 >
                   <RiAddLine className="size-3.5" /> {p}
                 </button>
@@ -547,10 +764,6 @@ function ModuleTargets({ mod, s, set, hue }: { mod: ModuleDef; s: ModState; set:
         </p>
       </div>
     )
-  }
-
-  if (mod.id === "mood") {
-    return <p className="text-muted-foreground">One tap at check-in, from rough to great. Only you see it, and it never affects your score.</p>
   }
 
   const optional = mod.metrics.length > 1
@@ -570,23 +783,8 @@ function ModuleTargets({ mod, s, set, hue }: { mod: ModuleDef; s: ModState; set:
           />
         </Row>
       )}
-      {mod.id === "budget" && (
-        <Row label="Currency">
-          <div className="w-52">
-            <Segmented
-              id="currency"
-              label="Currency"
-              size="sm"
-              value={s.currency}
-              options={CURRENCIES.map((c) => ({ value: c, label: c }))}
-              onChange={(c) => set((x) => ({ ...x, currency: c }))}
-            />
-          </div>
-        </Row>
-      )}
       {mod.metrics.map((def) => {
         const m = s.metrics[def.key]!
-        const unit = mod.id === "budget" && def.unit === "£" ? s.currency : def.unit
         const label = (
           <span className="flex items-center gap-3">
             {optional && (
@@ -601,17 +799,7 @@ function ModuleTargets({ mod, s, set, hue }: { mod: ModuleDef; s: ModState; set:
                 <Tick on={m.on} color={hueVar(hue)} />
               </button>
             )}
-            {def.key === "bedtime" ? (
-              <input
-                value={m.label}
-                onChange={(e) => setMetric(def.key, { label: e.target.value })}
-                aria-label="Bedtime goal"
-                maxLength={40}
-                className="w-40 rounded-lg border border-transparent bg-transparent px-1 font-medium outline-none hover:border-border focus-visible:border-ring"
-              />
-            ) : (
-              <span className={cn(!m.on && "text-muted-foreground")}>{mod.id === "weight" ? "Goal weight" : m.label}</span>
-            )}
+            <span className={cn(!m.on && "text-muted-foreground")}>{mod.id === "weight" ? "Goal weight" : m.label}</span>
           </span>
         )
         const control =
@@ -633,7 +821,7 @@ function ModuleTargets({ mod, s, set, hue }: { mod: ModuleDef; s: ModState; set:
               step={def.step ?? 1}
               min={def.min ?? 0}
               max={def.max ?? 100000}
-              unit={unit}
+              unit={def.unit}
               format={(n) => (mod.id === "weight" ? n.toFixed(1) : n.toLocaleString("en-GB"))}
             />
           ) : null
@@ -702,20 +890,18 @@ function ReviewStep({ chosen, state, hue, startDate, started }: { chosen: Module
         title="Your daily check-in"
         sub={started ? "This is what you'll fill in each day. It takes under a minute." : `This is what you'll fill in each day from ${startDate}. It takes under a minute.`}
       />
-      <div className="grid gap-3">
+      <div className="grid gap-3 xl:grid-cols-2 xl:items-start">
         {chosen.map((mod) => {
           const s = state[mod.id]
           const lines: { label: string; value: string }[] = []
           for (const def of mod.metrics) {
             const m = s.metrics[def.key]!
             if (!m.on) continue
-            const unit = mod.id === "budget" && def.unit === "£" ? s.currency : def.unit
             if (def.weekly) lines.push({ label: m.label, value: `${m.weekly} a week` })
             else if (mod.id === "weight")
               lines.push({ label: "Morning weigh-in", value: `Goal ${weightTarget(s, mod).toFixed(1)} kg` })
-            else if (mod.id === "mood") lines.push({ label: "How the day felt", value: "1 to 5" })
             else if (def.kind === "number" && m.target !== undefined)
-              lines.push({ label: m.label, value: `${def.compare === "max" ? "At most" : "At least"} ${formatNumber(m.target, unit)}` })
+              lines.push({ label: m.label, value: `${def.compare === "max" ? "At most" : "At least"} ${formatNumber(m.target, def.unit)}` })
             else lines.push({ label: m.label, value: "Yes or no" })
           }
           for (const c of s.custom) lines.push({ label: c.label, value: "Yes or no" })
@@ -747,35 +933,47 @@ function ReviewStep({ chosen, state, hue, startDate, started }: { chosen: Module
 function Done({ name, hue, startDate, started }: { name: string; hue: Hue; startDate: string; started: boolean }) {
   const router = useRouter()
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center px-6 py-12">
-      <motion.div initial={{ scale: 0.4, rotate: -90, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 200, damping: 14 }}>
-        <Mark size={96} />
-      </motion.div>
-      <motion.h1
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-        className="mt-8 font-display text-6xl leading-[0.95] font-bold tracking-tight text-balance"
-      >
-        You&apos;re in, {name.trim().split(/\s+/)[0]}.
-      </motion.h1>
-      <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-4 text-lg leading-relaxed text-muted-foreground">
-        {started ? "Your first check-in is waiting." : `Check-ins open ${startDate}. Until then, have a look around and see who else is in.`}
-      </motion.p>
-      <motion.button
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.45 }}
-        whileTap={{ scale: 0.97 }}
-        onClick={() => {
-          router.replace("/home")
-          router.refresh()
-        }}
-        className="mt-10 h-13 rounded-full font-semibold text-white"
-        style={{ background: hueVar(hue) }}
-      >
-        Go to the squad
-      </motion.button>
+    <main className="mx-auto flex min-h-svh max-w-md flex-col justify-center px-6 py-12 lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center lg:gap-16 lg:px-8">
+      <div className="flex flex-col">
+        <motion.div initial={{ scale: 0.4, rotate: -90, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 200, damping: 14 }}>
+          <Mark size={96} />
+        </motion.div>
+        <motion.h1
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="mt-8 font-display text-6xl leading-[0.95] font-bold tracking-tight text-balance lg:text-7xl"
+        >
+          You&apos;re in, {name.trim().split(/\s+/)[0]}.
+        </motion.h1>
+        <motion.p
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="mt-4 max-w-[44ch] text-lg leading-relaxed text-muted-foreground"
+        >
+          {started ? "Your first check-in is waiting." : `Check-ins open ${startDate}. Until then, have a look around and see who else is in.`}
+        </motion.p>
+        {/* Focused so Enter goes straight through on a keyboard */}
+        <motion.button
+          autoFocus
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.45 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => {
+            router.replace("/home")
+            router.refresh()
+          }}
+          className="mt-10 h-13 rounded-full font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring lg:self-start lg:px-10"
+          style={{ background: hueVar(hue) }}
+        >
+          Go to the squad
+        </motion.button>
+      </div>
+      <div className="hidden lg:block">
+        <HeroArt />
+      </div>
     </main>
   )
 }

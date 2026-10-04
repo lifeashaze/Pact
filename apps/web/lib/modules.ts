@@ -2,19 +2,7 @@
 // or more goals ("metrics") to their daily check-in, with sensible defaults
 // they can tune. Shared by the onboarding UI and the API that validates it.
 
-export type ModuleId =
-  | "workouts"
-  | "weight"
-  | "steps"
-  | "nutrition"
-  | "water"
-  | "sleep"
-  | "habits"
-  | "reading"
-  | "focus"
-  | "screen"
-  | "budget"
-  | "mood"
+export type ModuleId = "workouts" | "weight" | "steps" | "nutrition" | "habits" | "focus"
 
 export type Visibility = "squad" | "summary" | "private"
 
@@ -40,7 +28,7 @@ export type MetricDef = {
 export type ModuleDef = {
   id: ModuleId
   name: string
-  group: "Body" | "Food" | "Mind" | "Money"
+  group: "Body" | "Food" | "Mind"
   blurb: string
   // What the squad sees by default
   visibility: Visibility
@@ -123,29 +111,6 @@ export const MODULES: ModuleDef[] = [
     ],
   },
   {
-    id: "water",
-    name: "Water",
-    group: "Food",
-    blurb: "Litres a day.",
-    visibility: "squad",
-    visibilityOptions: ["squad", "summary", "private"],
-    metrics: [
-      { key: "water", label: "Water", kind: "number", unit: "L", compare: "min", target: 3, step: 0.25, min: 0.5, max: 8, scored: true, defaultOn: true },
-    ],
-  },
-  {
-    id: "sleep",
-    name: "Sleep",
-    group: "Body",
-    blurb: "A bedtime to keep, hours to get, or both.",
-    visibility: "squad",
-    visibilityOptions: ["squad", "summary", "private"],
-    metrics: [
-      { key: "bedtime", label: "In bed by 12", kind: "check", scored: true, defaultOn: true, hint: "Rename it to your own bedtime." },
-      { key: "hours", label: "Sleep", kind: "number", unit: "h", compare: "min", target: 7, step: 0.5, min: 4, max: 12, scored: true, defaultOn: false },
-    ],
-  },
-  {
     id: "habits",
     name: "Habits",
     group: "Mind",
@@ -159,17 +124,6 @@ export const MODULES: ModuleDef[] = [
     },
   },
   {
-    id: "reading",
-    name: "Reading",
-    group: "Mind",
-    blurb: "Pages a day. Books add up fast.",
-    visibility: "squad",
-    visibilityOptions: ["squad", "summary", "private"],
-    metrics: [
-      { key: "pages", label: "Reading", kind: "number", unit: "pages", compare: "min", target: 20, step: 5, min: 5, max: 200, scored: true, defaultOn: true },
-    ],
-  },
-  {
     id: "focus",
     name: "Deep work",
     group: "Mind",
@@ -180,41 +134,9 @@ export const MODULES: ModuleDef[] = [
       { key: "hours", label: "Deep work", kind: "number", unit: "h", compare: "min", target: 2, step: 0.5, min: 0.5, max: 12, scored: true, defaultOn: true },
     ],
   },
-  {
-    id: "screen",
-    name: "Screen time",
-    group: "Mind",
-    blurb: "Phone time under a daily limit.",
-    visibility: "squad",
-    visibilityOptions: ["squad", "summary", "private"],
-    metrics: [
-      { key: "minutes", label: "Screen time", kind: "number", unit: "min", compare: "max", target: 180, step: 15, min: 15, max: 720, scored: true, defaultOn: true, hint: "Copy it from Screen Time or Digital Wellbeing at night." },
-    ],
-  },
-  {
-    id: "budget",
-    name: "Spending",
-    group: "Money",
-    blurb: "A daily spending limit and no-spend days.",
-    visibility: "summary",
-    visibilityOptions: ["summary", "private"],
-    metrics: [
-      { key: "spend", label: "Spending", kind: "number", unit: "£", compare: "max", target: 30, step: 5, min: 0, max: 1000, scored: true, defaultOn: true, hint: "Everyday spending, not rent or bills." },
-      { key: "no-spend", label: "No-spend day", kind: "check", scored: false, defaultOn: false, hint: "Tick on days you spent nothing at all." },
-    ],
-  },
-  {
-    id: "mood",
-    name: "Mood",
-    group: "Mind",
-    blurb: "How the day felt, from 1 to 5. Just for you.",
-    visibility: "private",
-    visibilityOptions: ["private", "squad"],
-    metrics: [{ key: "mood", label: "Mood", kind: "number", unit: "/5", step: 1, min: 1, max: 5, scored: false, defaultOn: true }],
-  },
 ]
 
-export const MODULE_GROUPS = ["Body", "Food", "Mind", "Money"] as const
+export const MODULE_GROUPS = ["Body", "Food", "Mind"] as const
 
 export function getModule(id: string) {
   return MODULES.find((m) => m.id === id)
@@ -226,8 +148,6 @@ export const VISIBILITY_COPY: Record<Visibility, { label: string; detail: string
   private: { label: "Just me", detail: "Only you see it. It doesn't count toward your hit rate." },
 }
 
-export const CURRENCIES = ["£", "$", "€", "₹"] as const
-
 // ---------- the shape onboarding sends ----------
 
 export type GoalInput = {
@@ -237,7 +157,6 @@ export type GoalInput = {
   target?: number
   weeklyTarget?: number
   startValue?: number
-  unit?: string
 }
 
 export type SetupInput = {
@@ -321,14 +240,13 @@ export function buildGoals(input: SetupInput): GoalRecord[] | string {
       start && typeof g.startValue === "number" && Number.isFinite(g.startValue)
         ? clamp(g.startValue, start.min, start.max)
         : null
-    const unit = mod.id === "budget" && def.unit === "£" && CURRENCIES.includes(g.unit as never) ? g.unit! : (def.unit ?? null)
 
     out.push({
       module: mod.id,
       metric: def.key,
       label: label || def.label,
       kind: def.kind,
-      unit,
+      unit: def.unit ?? null,
       target,
       // Weight: lower is the goal when the target is under the start, higher otherwise
       compare: mod.id === "weight" && target !== null && startValue !== null ? (target < startValue ? "max" : "min") : (def.compare ?? null),

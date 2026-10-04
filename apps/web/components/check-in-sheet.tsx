@@ -5,33 +5,44 @@ import { AnimatePresence, LayoutGroup, motion, useDragControls } from "motion/re
 import { RiAddLine, RiCheckLine, RiCloseLine, RiLockLine, RiSubtractLine } from "@remixicon/react"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { hueTint, hueVar } from "@/components/bits"
+import { Kbd, hueTint, hueVar, useMediaQuery } from "@/components/bits"
 import { useSeason, useSquad } from "@/components/squad-store"
 import { type DayLog, type Goal, type Hue, dailyGoals, formatNumber, isHit, latestAverage, workoutGoal } from "@/lib/season"
 
 const workoutTypes = ["Push", "Pull", "Legs", "Upper body", "Full body", "Run", "Cardio", "Class", "Sport", "Yoga"]
-const moods = ["Rough", "Meh", "Okay", "Good", "Great"]
 
+// Below sm it's a bottom sheet you can drag away; from sm up it's a centred dialog,
+// and from lg it opens out into two columns: the day on the left, the goals on the right
 export function CheckInSheet() {
   const { checkInOpen, closeCheckIn } = useSquad()
   const drag = useDragControls()
+  const dialog = React.useRef<HTMLDivElement>(null)
+  const sheet = !useMediaQuery("(min-width: 40rem)")
+
+  const onKey = React.useEffectEvent((e: KeyboardEvent) => {
+    if (e.key === "Escape") closeCheckIn()
+    else if (e.key === "Tab") trapFocus(e, dialog.current)
+  })
 
   React.useEffect(() => {
     if (!checkInOpen) return
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeCheckIn()
-    document.addEventListener("keydown", onKey)
+    // Hand focus back to whatever opened it
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const listener = (e: KeyboardEvent) => onKey(e)
+    document.addEventListener("keydown", listener)
     const overflow = document.body.style.overflow
     document.body.style.overflow = "hidden"
     return () => {
-      document.removeEventListener("keydown", onKey)
+      document.removeEventListener("keydown", listener)
       document.body.style.overflow = overflow
+      opener?.focus()
     }
-  }, [checkInOpen, closeCheckIn])
+  }, [checkInOpen])
 
   return (
     <AnimatePresence>
       {checkInOpen && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center sm:p-6">
+        <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center sm:p-6 lg:p-10">
           <motion.div
             className="absolute inset-0 bg-black/40"
             initial={{ opacity: 0 }}
@@ -41,15 +52,16 @@ export function CheckInSheet() {
             onClick={closeCheckIn}
           />
           <motion.div
+            ref={dialog}
             role="dialog"
             aria-modal="true"
             aria-labelledby="check-in-title"
-            className="relative flex max-h-[92svh] w-full flex-col rounded-t-3xl bg-card shadow-2xl sm:max-w-lg sm:rounded-3xl"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", stiffness: 340, damping: 34 }}
-            drag="y"
+            className="relative flex max-h-[92svh] w-full flex-col rounded-t-3xl bg-card shadow-2xl sm:max-h-[88svh] sm:max-w-lg sm:rounded-3xl lg:max-h-[min(88svh,52rem)] lg:max-w-4xl"
+            initial={sheet ? { y: "100%" } : { opacity: 0, y: 24, scale: 0.97 }}
+            animate={sheet ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={sheet ? { y: "100%" } : { opacity: 0, y: 12, scale: 0.98 }}
+            transition={sheet ? { type: "spring", stiffness: 340, damping: 34 } : { type: "spring", stiffness: 420, damping: 34 }}
+            drag={sheet ? "y" : false}
             dragListener={false}
             dragControls={drag}
             dragConstraints={{ top: 0, bottom: 0 }}
@@ -58,13 +70,34 @@ export function CheckInSheet() {
               if (info.offset.y > 120 || info.velocity.y > 600) closeCheckIn()
             }}
           >
-            <CheckInForm onGrab={(e) => drag.start(e)} />
+            <CheckInForm onGrab={(e) => sheet && drag.start(e)} />
           </motion.div>
         </div>
       )}
     </AnimatePresence>
   )
 }
+
+// Keeps Tab and Shift+Tab cycling inside the dialog
+function trapFocus(e: KeyboardEvent, root: HTMLElement | null) {
+  if (!root) return
+  const items = [...root.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), a[href], [tabindex]:not([tabindex='-1'])")]
+  const first = items[0]
+  const last = items[items.length - 1]
+  if (!first || !last) return
+  const inside = root.contains(document.activeElement)
+  if (e.shiftKey && (!inside || document.activeElement === first)) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && (!inside || document.activeElement === last)) {
+    e.preventDefault()
+    first.focus()
+  }
+}
+
+const noSubscribe = () => () => {}
+const useIsMac = () =>
+  React.useSyncExternalStore(noSubscribe, () => /Mac|iPhone|iPad/.test(navigator.userAgent), () => false)
 
 function blankLog(goals: Goal[], logs: (DayLog | undefined)[]): DayLog {
   const log: DayLog = { checks: {}, numbers: {} }
@@ -116,6 +149,19 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
     if (!ok) setSaving(false)
   }
 
+  // Cmd/Ctrl+Enter saves from anywhere in the form
+  const isMac = useIsMac()
+  const onSaveKey = React.useEffectEvent((e: KeyboardEvent) => {
+    if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || saving) return
+    e.preventDefault()
+    save()
+  })
+  React.useEffect(() => {
+    const listener = (e: KeyboardEvent) => onSaveKey(e)
+    document.addEventListener("keydown", listener)
+    return () => document.removeEventListener("keydown", listener)
+  }, [])
+
   const canYesterday = TODAY > 0
   const dayLabel = day === TODAY ? "Today" : "Yesterday"
 
@@ -125,146 +171,165 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
       <div onPointerDown={onGrab} className="shrink-0 touch-none pt-3 sm:hidden">
         <div className="mx-auto h-1.5 w-10 rounded-full bg-muted" />
       </div>
-      <header onPointerDown={onGrab} className="flex touch-none items-start justify-between gap-4 px-6 pt-4 pb-2 sm:pt-6">
+      <header
+        onPointerDown={onGrab}
+        className="flex touch-none items-start justify-between gap-4 px-6 pt-4 pb-2 sm:pt-6 lg:border-b lg:border-border lg:px-8 lg:pt-7 lg:pb-5"
+      >
         <div>
           <p className="text-sm text-muted-foreground">{longDate(day)}</p>
-          <h2 id="check-in-title" className="font-display text-3xl font-semibold tracking-tight">
+          <h2 id="check-in-title" className="font-display text-3xl font-semibold tracking-tight lg:text-4xl">
             {existing ? `Edit ${dayLabel.toLowerCase()}` : day === TODAY ? "Check in" : "Log yesterday"}
           </h2>
         </div>
         <button
           onClick={closeCheckIn}
           aria-label="Close"
-          className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          aria-keyshortcuts="Escape"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
         >
           <RiCloseLine className="size-5" />
         </button>
       </header>
 
-      {canYesterday && (
-        <div className="px-6 pb-3">
-          <LayoutGroup id="check-in-day">
-            <div role="tablist" aria-label="Day" className="flex w-fit gap-1 rounded-full bg-muted p-1">
-              {[TODAY - 1, TODAY].map((d) => (
-                <button
-                  key={d}
-                  role="tab"
-                  aria-selected={day === d}
-                  onClick={() => setDay(d)}
-                  className="relative h-8 rounded-full px-4 text-sm font-semibold text-muted-foreground transition-colors aria-selected:text-foreground"
-                >
-                  {day === d && <motion.span layoutId="day-pill" className="absolute inset-0 rounded-full bg-card shadow-sm" />}
-                  <span className="relative">
-                    {d === TODAY ? "Today" : "Yesterday"}
-                    {mine[d] && <span className="sr-only"> (saved)</span>}
-                  </span>
-                </button>
-              ))}
+      {/* One column on phones and tablets. On desktop the day, progress and save sit on the left and the goals scroll on the right */}
+      <div className="flex min-h-0 flex-1 flex-col lg:grid lg:min-h-[min(28rem,60svh)] lg:grid-cols-[18rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)_auto]">
+        <div className="shrink-0 px-6 lg:col-start-1 lg:row-start-1 lg:border-e lg:border-border lg:px-8 lg:pt-6">
+          {canYesterday && (
+            <div className="pb-3 lg:pb-6">
+              <LayoutGroup id="check-in-day">
+                <div role="tablist" aria-label="Day" className="flex w-fit gap-1 rounded-full bg-muted p-1">
+                  {[TODAY - 1, TODAY].map((d) => (
+                    <button
+                      key={d}
+                      role="tab"
+                      aria-selected={day === d}
+                      onClick={() => setDay(d)}
+                      className="relative h-8 rounded-full px-4 text-sm font-semibold text-muted-foreground transition-colors aria-selected:text-foreground"
+                    >
+                      {day === d && <motion.span layoutId="day-pill" className="absolute inset-0 rounded-full bg-card shadow-sm" />}
+                      <span className="relative">
+                        {d === TODAY ? "Today" : "Yesterday"}
+                        {mine[d] && <span className="sr-only"> (saved)</span>}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </LayoutGroup>
             </div>
-          </LayoutGroup>
-        </div>
-      )}
+          )}
 
-      {/* Live progress: one segment per daily goal */}
-      {goals.length > 0 && (
-        <div className="px-6 pb-4">
-          <div className="flex gap-1.5">
-            {goals.map((g) => (
-              <motion.span
-                key={g.id}
-                className="h-2 flex-1 rounded-full"
-                animate={{
-                  backgroundColor: isHit(g, log) ? hueVar(you.hue) : "var(--muted)",
-                  scaleY: allDone ? [1, 1.8, 1] : 1,
+          {/* Live progress: one segment per daily goal */}
+          {goals.length > 0 && (
+            <div className="pb-4">
+              <p className="mb-3 hidden font-display text-5xl leading-none font-semibold tabular-nums lg:block" aria-hidden>
+                {hitCount}
+                <span className="text-muted-foreground">/{goals.length}</span>
+              </p>
+              <div className="flex gap-1.5">
+                {goals.map((g) => (
+                  <motion.span
+                    key={g.id}
+                    className="h-2 flex-1 rounded-full"
+                    animate={{
+                      backgroundColor: isHit(g, log) ? hueVar(you.hue) : "var(--muted)",
+                      scaleY: allDone ? [1, 1.8, 1] : 1,
+                    }}
+                    transition={{ duration: 0.35 }}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">
+                {allDone ? "Every daily goal done" : `${hitCount} of ${goals.length} daily goals done`}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid content-start gap-6 overflow-y-auto overscroll-contain px-6 pb-6 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:px-8 lg:py-6">
+          {wGoal && (
+            <Group title="Workouts" visibility={wGoal.visibility}>
+              <ToggleRow
+                ref={firstControl}
+                hue={you.hue}
+                label={day === TODAY ? "Worked out today" : "Worked out yesterday"}
+                sub={`${workoutsBefore + (log.checks.workout ? 1 : 0)} of ${wGoal.weekly} this week`}
+                on={!!log.checks.workout}
+                onChange={(on) => {
+                  setCheck("workout", on)
+                  if (!on) setLog((l) => ({ ...l, workoutName: undefined }))
                 }}
-                transition={{ duration: 0.35 }}
               />
-            ))}
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground" aria-live="polite">
-            {allDone ? "Every daily goal done" : `${hitCount} of ${goals.length} daily goals done`}
-          </p>
-        </div>
-      )}
+              <AnimatePresence initial={false}>
+                {log.checks.workout && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-wrap gap-2 pt-1 pb-1" role="group" aria-label="What did you train?">
+                      {workoutTypes.map((t) => {
+                        const selected = log.workoutName === t
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => setLog((l) => ({ ...l, workoutName: selected ? undefined : t }))}
+                            className={cn(
+                              "h-9 rounded-full border px-3.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
+                              selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {t}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Group>
+          )}
 
-      <div className="grid gap-6 overflow-y-auto overscroll-contain px-6 pb-6">
-        {wGoal && (
-          <Group title="Workouts" visibility={wGoal.visibility}>
-            <ToggleRow
-              ref={firstControl}
-              hue={you.hue}
-              label={day === TODAY ? "Worked out today" : "Worked out yesterday"}
-              sub={`${workoutsBefore + (log.checks.workout ? 1 : 0)} of ${wGoal.weekly} this week`}
-              on={!!log.checks.workout}
-              onChange={(on) => {
-                setCheck("workout", on)
-                if (!on) setLog((l) => ({ ...l, workoutName: undefined }))
-              }}
-            />
-            <AnimatePresence initial={false}>
-              {log.checks.workout && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="flex flex-wrap gap-2 pt-1 pb-1" role="group" aria-label="What did you train?">
-                    {workoutTypes.map((t) => {
-                      const selected = log.workoutName === t
-                      return (
-                        <button
-                          key={t}
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() => setLog((l) => ({ ...l, workoutName: selected ? undefined : t }))}
-                          className={cn(
-                            "h-9 rounded-full border px-3.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring",
-                            selected ? "border-foreground bg-foreground text-background" : "border-border text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {t}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </motion.div>
+          {groups.map((group) => (
+            <Group key={group.title} title={group.title} visibility={group.goals[0]!.visibility}>
+              {group.goals.map((g, i) =>
+                g.kind === "check" ? (
+                  <ToggleRow
+                    key={g.id}
+                    ref={!wGoal && groups[0] === group && i === 0 ? firstControl : undefined}
+                    hue={you.hue}
+                    label={g.label}
+                    on={!!log.checks[g.id]}
+                    onChange={(on) => setCheck(g.id, on)}
+                  />
+                ) : (
+                  <NumberRow key={g.id} hue={you.hue} goal={g} value={log.numbers[g.id]} onChange={(n) => setNumber(g.id, n)} />
+                )
               )}
-            </AnimatePresence>
-          </Group>
-        )}
+            </Group>
+          ))}
+        </div>
 
-        {groups.map((group) => (
-          <Group key={group.title} title={group.title} visibility={group.goals[0]!.visibility}>
-            {group.goals.map((g, i) =>
-              g.id === "mood" || g.id === "mood-mood" ? (
-                <MoodRow key={g.id} hue={you.hue} value={log.numbers[g.id]} onChange={(n) => setNumber(g.id, n)} />
-              ) : g.kind === "check" ? (
-                <ToggleRow
-                  key={g.id}
-                  ref={!wGoal && groups[0] === group && i === 0 ? firstControl : undefined}
-                  hue={you.hue}
-                  label={g.label}
-                  on={!!log.checks[g.id]}
-                  onChange={(on) => setCheck(g.id, on)}
-                />
-              ) : (
-                <NumberRow key={g.id} hue={you.hue} goal={g} value={log.numbers[g.id]} onChange={(n) => setNumber(g.id, n)} />
-              )
-            )}
-          </Group>
-        ))}
+        <footer className="border-t border-border px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:col-start-1 lg:row-start-2 lg:border-e lg:px-8 lg:pb-6">
+          <button
+            onClick={save}
+            disabled={saving}
+            aria-keyshortcuts={isMac ? "Meta+Enter" : "Control+Enter"}
+            className="h-13 w-full rounded-full bg-primary text-base font-semibold text-primary-foreground transition-[transform,background-color] hover:bg-primary/90 active:scale-[0.98] disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {saving ? "Saving" : existing ? "Save changes" : "Save check-in"}
+          </button>
+          <p className="mt-3 hidden items-center justify-center gap-1 text-xs text-muted-foreground lg:flex" aria-hidden>
+            <Kbd>{isMac ? "⌘" : "Ctrl"}</Kbd>
+            <Kbd>Enter</Kbd>
+            <span className="me-2">to save</span>
+            <Kbd>Esc</Kbd>
+            <span>to close</span>
+          </p>
+        </footer>
       </div>
-
-      <footer className="border-t border-border px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="h-13 w-full rounded-full bg-primary text-base font-semibold text-primary-foreground transition-transform active:scale-[0.98] disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          {saving ? "Saving" : existing ? "Save changes" : "Save check-in"}
-        </button>
-      </footer>
     </>
   )
 }
@@ -325,34 +390,6 @@ const ToggleRow = React.forwardRef<
     </button>
   )
 })
-
-function MoodRow({ hue, value, onChange }: { hue: Hue; value: number | undefined; onChange: (n: number | undefined) => void }) {
-  return (
-    <div className="grid gap-2 rounded-2xl border border-border px-4 py-3">
-      <span className="font-medium">How did today feel?</span>
-      <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Mood">
-        {moods.map((label, i) => {
-          const n = i + 1
-          const on = value === n
-          return (
-            <button
-              key={label}
-              type="button"
-              role="radio"
-              aria-checked={on}
-              onClick={() => onChange(on ? undefined : n)}
-              className="grid h-14 place-items-center content-center gap-0.5 rounded-xl border text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-ring"
-              style={on ? { background: hueTint(hue, 14), borderColor: hueVar(hue) } : { borderColor: "var(--border)" }}
-            >
-              <span className="font-display text-lg leading-none font-semibold">{n}</span>
-              <span className="text-xs text-muted-foreground">{label}</span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
 
 function NumberRow({
   hue,

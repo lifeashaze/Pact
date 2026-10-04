@@ -18,8 +18,6 @@ type SquadState = {
   logs: SeasonLogs
   feed: FeedItem[]
   nudged: string[]
-  // Demo data on the landing page: nothing is saved
-  demo: boolean
   checkInOpen: boolean
   checkInDay: number
   toast: string | null
@@ -56,12 +54,10 @@ async function send(url: string, init: RequestInit) {
 export function SquadProvider({
   initial,
   timeZone,
-  demo = false,
   children,
 }: {
   initial: SquadSnapshot
   timeZone: string
-  demo?: boolean
   children: React.ReactNode
 }) {
   const season = React.useMemo(() => createSeason(initial.season), [initial.season])
@@ -93,7 +89,6 @@ export function SquadProvider({
       logs,
       feed,
       nudged,
-      demo,
       checkInOpen,
       checkInDay,
       toast,
@@ -116,10 +111,6 @@ export function SquadProvider({
         setCheckInOpen(false)
         const r = dayResult(you, log)
         const summary = r.total ? `${r.hit} of ${r.total} goals` : "saved"
-        if (demo) {
-          setToast(`Checked in. ${summary}`)
-          return true
-        }
         try {
           await send(`/api/check-ins/${isoDay(season.startsOn, day)}`, {
             method: "PUT",
@@ -148,7 +139,6 @@ export function SquadProvider({
             ? x.reactions.filter((r) => !(r.eventId === itemId && r.userId === you.id && r.emoji === emoji))
             : [...x.reactions, { eventId: itemId, userId: you.id, emoji }],
         }))
-        if (demo) return
         send("/api/feed/reactions", { method: mine ? "DELETE" : "POST", body: JSON.stringify({ eventId: itemId, emoji }) }).catch(
           (e) => {
             setExtras((x) => ({ ...x, reactions: extras.reactions }))
@@ -161,7 +151,6 @@ export function SquadProvider({
         if (!body) return
         const temp = { id: `temp-${Date.now()}`, eventId: itemId, userId: you.id, body, createdAt: new Date().toISOString() }
         setExtras((x) => ({ ...x, comments: [...x.comments, temp] }))
-        if (demo) return
         send("/api/feed/comments", { method: "POST", body: JSON.stringify({ eventId: itemId, body }) })
           .then((res) => res.json() as Promise<{ comment: { id: string } }>)
           .then(({ comment }) =>
@@ -175,7 +164,6 @@ export function SquadProvider({
       nudge: (memberId) => {
         if (nudged.includes(memberId)) return
         setNudged((list) => [...list, memberId])
-        if (demo) return
         send("/api/nudges", { method: "POST", body: JSON.stringify({ to: memberId }) }).catch((e) => {
           setNudged((list) => list.filter((id) => id !== memberId))
           fail(e)
@@ -183,7 +171,7 @@ export function SquadProvider({
       },
       dismissToast: () => setToast(null),
     }
-  }, [season, initial.squad.name, members, you, logs, feed, nudged, demo, checkInOpen, checkInDay, toast, seasonView, extras])
+  }, [season, initial.squad.name, members, you, logs, feed, nudged, checkInOpen, checkInDay, toast, seasonView, extras])
 
   return <SquadContext.Provider value={value}>{children}</SquadContext.Provider>
 }

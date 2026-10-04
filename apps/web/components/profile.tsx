@@ -83,7 +83,7 @@ export function Profile({ id }: { id: string }) {
   const unit = kg ? " kg" : "%"
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6 lg:px-10 lg:pt-10">
+    <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 lg:px-10 lg:pt-10">
       <Link
         href="/home"
         className="mb-4 inline-flex h-10 items-center gap-2 rounded-full pe-3 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring lg:hidden"
@@ -193,87 +193,106 @@ export function Profile({ id }: { id: string }) {
           </ul>
         </Card>
       ) : (
-        <div className="mt-6 grid gap-6 lg:grid-cols-2">
-          <Card title="Today" className="lg:col-span-2">
-            {today ? (
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {wGoal && (
-                  <GoalLine
-                    done={!!today.checks.workout}
-                    label="Workout"
-                    value={
-                      today.workoutName ??
-                      (today.checks.workout ? "Done" : "Rest day")
-                    }
-                    hue={member.hue}
-                  />
-                )}
-                {dailyGoals(member).map((g) => (
-                  <GoalLine
-                    key={g.id}
-                    done={isHit(g, today)}
-                    label={g.label}
-                    value={
-                      g.kind === "number"
-                        ? today.numbers[g.id] !== undefined
-                          ? formatNumber(today.numbers[g.id]!, g.unit)
-                          : "Not logged"
-                        : isHit(g, today)
-                          ? "Done"
-                          : "Missed"
-                    }
-                    hue={member.hue}
-                  />
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted-foreground">
-                {member.isYou ? "You haven't" : `${member.name} hasn't`} checked
-                in yet today.
-              </p>
-            )}
-          </Card>
+        // Wide screens move today and the weekly workouts into a side column. Today
+        // comes first in the markup, so phones still open on it
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+          <div className="grid min-w-0 content-start gap-6 xl:col-start-2 xl:row-start-1">
+            <Card title="Today">
+              {today ? (
+                <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                  {wGoal && (
+                    <GoalLine
+                      done={!!today.checks.workout}
+                      label="Workout"
+                      value={
+                        today.workoutName ??
+                        (today.checks.workout ? "Done" : "Rest day")
+                      }
+                      hue={member.hue}
+                    />
+                  )}
+                  {dailyGoals(member).map((g) => (
+                    <GoalLine
+                      key={g.id}
+                      done={isHit(g, today)}
+                      label={g.label}
+                      value={
+                        g.kind === "number"
+                          ? today.numbers[g.id] !== undefined
+                            ? formatNumber(today.numbers[g.id]!, g.unit)
+                            : "Not logged"
+                          : isHit(g, today)
+                            ? "Done"
+                            : "Missed"
+                      }
+                      hue={member.hue}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground">
+                  {member.isYou ? "You haven't" : `${member.name} hasn't`}{" "}
+                  checked in yet today.
+                </p>
+              )}
+            </Card>
 
-          {weight && (
+            {wGoal && (
+              <Card title="Workouts per week" className="max-xl:hidden">
+                <WeeklyWorkouts member={member} logs={memberLogs} />
+              </Card>
+            )}
+          </div>
+
+          <div className="grid min-w-0 content-start gap-6 lg:grid-cols-2 xl:col-start-1 xl:row-start-1">
+            {weight && (
+              <Card
+                title="Weight"
+                sub={
+                  kg
+                    ? "Faint dots are daily weigh-ins; the line is the 7-day average"
+                    : "Shared as change since the start, 7-day average"
+                }
+                className="lg:col-span-2"
+              >
+                <WeightChart member={member} logs={memberLogs} />
+              </Card>
+            )}
+
             <Card
-              title="Weight"
-              sub={
-                kg
-                  ? "Faint dots are daily weigh-ins; the line is the 7-day average"
-                  : "Shared as change since the start, 7-day average"
-              }
+              title="Consistency"
+              sub="How much of each day's goals got done"
               className="lg:col-span-2"
             >
-              <WeightChart member={member} logs={memberLogs} />
+              <ConsistencyCalendar member={member} logs={memberLogs} />
             </Card>
-          )}
 
-          <Card
-            title="Consistency"
-            sub="How much of each day's goals got done"
-            className="lg:col-span-2"
-          >
-            <ConsistencyCalendar member={member} logs={memberLogs} />
-          </Card>
+            {numberGoals.map((g, i) => (
+              <Card
+                key={g.id}
+                title={g.label}
+                sub={`Last 14 days, ${g.compare === "max" ? "limit" : "goal"} ${formatNumber(g.target!, g.unit)}`}
+                // Without the workouts card beside it, an odd last chart takes the full row
+                className={cn(
+                  i === numberGoals.length - 1 && i % 2 === 0 && "xl:col-span-2"
+                )}
+              >
+                <TargetBars member={member} goal={g} logs={memberLogs} />
+              </Card>
+            ))}
 
-          {numberGoals.map((g) => (
-            <Card
-              key={g.id}
-              title={g.label}
-              sub={`Last 14 days, ${g.compare === "max" ? "limit" : "goal"} ${formatNumber(g.target!, g.unit)}`}
-            >
-              <TargetBars member={member} goal={g} logs={memberLogs} />
-            </Card>
-          ))}
-
-          {wGoal && (
-            <Card
-              title="Workouts per week"
-              className={cn(numberGoals.length % 2 === 0 && "lg:col-span-2")}
-            >
-              <WeeklyWorkouts member={member} logs={memberLogs} />
-            </Card>
-          )}
+            {wGoal && (
+              <Card
+                title="Workouts per week"
+                className={cn(
+                  "xl:hidden",
+                  numberGoals.length % 2 === 0 && "lg:col-span-2"
+                )}
+              >
+                <WeeklyWorkouts member={member} logs={memberLogs} />
+              </Card>
+            )}
+          </div>
         </div>
       )}
     </div>

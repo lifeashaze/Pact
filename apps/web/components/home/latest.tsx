@@ -1,5 +1,6 @@
 "use client"
 
+import { cn } from "@workspace/ui/lib/utils"
 import { Avatar } from "@/components/bits"
 import { useDayName } from "@/components/feed-item"
 import { CardHeader, CardLink, HomeCard } from "@/components/home/card"
@@ -7,7 +8,8 @@ import { seasonPhase } from "@/components/home/derive"
 import { useSquad, useSeason } from "@/components/squad-store"
 import type { FeedItem } from "@/lib/feed"
 
-const LIMIT = 3
+// Three on phones, four on bigger screens (two by two when the card is wide)
+const LIMIT = 4
 
 // Today's items just show the time; older ones say which day
 const when = (item: FeedItem, today: number, dayName: (d: number) => string) =>
@@ -24,9 +26,10 @@ export function Latest({ index }: { index?: number }) {
     <HomeCard labelledBy="latest-title" index={index}>
       <CardHeader id="latest-title" title="Latest" action={items.length > 0 && <CardLink href="/feed">See all</CardLink>} />
       {items.length > 0 ? (
-        <ul className="mt-4 grid grid-cols-1">
-          {items.map((item) => (
-            <LatestRow key={item.id} item={item} />
+        // Rows pad themselves top and bottom; the negative margin takes that back off the ends
+        <ul className="mt-1 -mb-3 grid grid-cols-1 @xl:grid-cols-2 @xl:gap-x-8">
+          {items.map((item, i) => (
+            <LatestRow key={item.id} item={item} className={cn(i >= 3 && "max-sm:hidden")} />
           ))}
         </ul>
       ) : (
@@ -40,14 +43,14 @@ export function Latest({ index }: { index?: number }) {
   )
 }
 
-function LatestRow({ item }: { item: FeedItem }) {
+function LatestRow({ item, className }: { item: FeedItem; className?: string }) {
   const { getMember } = useSquad()
   const { TODAY } = useSeason()
   const dayName = useDayName()
   const member = getMember(item.memberId)
   if (!member) return null
   return (
-    <li className="flex gap-3 border-t border-border py-3 first:border-t-0 first:pt-0 last:pb-0">
+    <li className={cn("flex gap-3 border-t border-border py-3 first:border-t-0 @xl:nth-2:border-t-0", className)}>
       <Avatar member={member} size={36} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3 text-sm">

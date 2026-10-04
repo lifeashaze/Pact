@@ -52,7 +52,12 @@ export function Stepper({
             if (draft !== null && Number.isFinite(n) && draft.trim() !== "") onChange(clamp(n))
             setDraft(null)
           }}
-          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          onKeyDown={(e) => {
+            // Enter commits the number; preventDefault stops it also moving onboarding to the next step
+            if (e.key !== "Enter") return
+            e.preventDefault()
+            e.currentTarget.blur()
+          }}
           className="w-[5.5ch] bg-transparent text-center font-display text-2xl font-semibold tabular-nums outline-none"
         />
         {unit && !prefix && <span className="text-sm text-muted-foreground">{unit}</span>}
@@ -72,12 +77,14 @@ function StepButton({ label, onClick, disabled, children }: { label: string; onC
       onClick={onClick}
       disabled={disabled}
       whileTap={{ scale: 0.88 }}
-      className="grid size-10 place-items-center rounded-full bg-muted text-foreground transition-opacity disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-ring"
+      className="grid size-10 place-items-center rounded-full bg-muted text-foreground transition-[opacity,background-color] enabled:hover:bg-foreground/10 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-ring"
     >
       {children}
     </motion.button>
   )
 }
+
+const ARROWS: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
 
 export function Segmented<T extends string>({
   id,
@@ -96,16 +103,31 @@ export function Segmented<T extends string>({
 }) {
   return (
     <LayoutGroup id={id}>
-      <div role="radiogroup" aria-label={label} className="flex gap-1 rounded-full bg-muted p-1">
+      {/* Arrow keys move the choice, like native radios; only the chosen one is in the tab order */}
+      <div
+        role="radiogroup"
+        aria-label={label}
+        className="flex gap-1 rounded-full bg-muted p-1"
+        onKeyDown={(e) => {
+          const d = ARROWS[e.key]
+          if (!d) return
+          e.preventDefault()
+          const i = (options.findIndex((o) => o.value === value) + d + options.length) % options.length
+          const target = e.currentTarget.children[i] as HTMLElement | undefined
+          onChange(options[i]!.value)
+          target?.focus()
+        }}
+      >
         {options.map((o) => (
           <button
             key={o.value}
             type="button"
             role="radio"
             aria-checked={value === o.value}
+            tabIndex={value === o.value ? 0 : -1}
             onClick={() => onChange(o.value)}
             className={cn(
-              "relative flex-1 rounded-full px-3 font-semibold whitespace-nowrap text-muted-foreground transition-colors aria-checked:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+              "relative flex-1 rounded-full px-3 font-semibold whitespace-nowrap text-muted-foreground transition-colors hover:text-foreground aria-checked:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
               size === "sm" ? "h-8 text-xs" : "h-10 text-sm"
             )}
           >

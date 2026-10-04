@@ -8,7 +8,7 @@ import { profiles, squadMembers } from "@/lib/db/schema"
 import { activeGoals, ensureMembership, todayIndex } from "@/lib/squad-data"
 import { requireApproved } from "@/lib/viewer"
 
-export const metadata: Metadata = { title: "Set up, Pact90" }
+export const metadata: Metadata = { title: "Set up, Pact" }
 
 export default async function OnboardingPage({ searchParams }: PageProps<"/onboarding">) {
   const viewer = await requireApproved()

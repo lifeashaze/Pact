@@ -30,7 +30,7 @@ const plans: Plan[] = [
       ["workouts", "workout", "Workout", "check", null, 4, null],
       ["weight", "weight", "Weight", "number", 80, null, "kg"],
       ["nutrition", "protein", "Protein", "number", 140, null, "g"],
-      ["sleep", "bedtime", "In bed by 12", "check", null, null, null],
+      ["habits", "custom-a3", "Meditate 10 minutes", "check", null, null, null],
       ["habits", "custom-a1", "No alcohol", "check", null, null, null],
       ["habits", "custom-a2", "Stretch", "check", null, null, null],
     ],
@@ -39,9 +39,9 @@ const plans: Plan[] = [
     email: "blake@example.com", name: "Blake", hue: "aqua", consistency: 0.72, workoutDays: [1, 3, 5, 6], startWeight: 63.1,
     goals: [
       ["workouts", "workout", "Workout", "check", null, 4, null],
-      ["water", "water", "Water", "number", 3, null, "L"],
-      ["reading", "pages", "Reading", "number", 20, null, "pages"],
-      ["budget", "spend", "Spending", "number", 25, null, "£"],
+      ["focus", "hours", "Deep work", "number", 2, null, "h"],
+      ["nutrition", "no-sugar", "No added sugar", "check", null, null, null],
+      ["steps", "steps", "Steps", "number", 8000, null, "steps"],
     ],
   },
   {
@@ -51,12 +51,12 @@ const plans: Plan[] = [
       ["steps", "steps", "Steps", "number", 10000, null, "steps"],
       ["nutrition", "calories", "Calories", "number", 2500, null, "kcal"],
       ["nutrition", "no-junk", "No junk food", "check", null, null, null],
-      ["screen", "minutes", "Screen time", "number", 180, null, "min"],
+      ["habits", "custom-c1", "No social media before noon", "check", null, null, null],
     ],
   },
 ]
-const COMPARE: Record<string, "min" | "max"> = { protein: "min", water: "min", pages: "min", steps: "min", spend: "max", calories: "max", minutes: "max" }
-const STEP: Record<string, number> = { protein: 5, water: 0.25, pages: 5, steps: 500, spend: 5, calories: 50, minutes: 15, weight: 0.1 }
+const COMPARE: Record<string, "min" | "max"> = { protein: "min", hours: "min", steps: "min", calories: "max" }
+const STEP: Record<string, number> = { protein: 5, hours: 0.5, steps: 500, calories: 50, weight: 0.1 }
 const names = ["Push", "Pull", "Legs", "Run", "Full body", "Class"]
 
 function rng(seed: number) {
@@ -93,7 +93,7 @@ for (const [pi, p] of plans.entries()) {
   if (!existing.length) {
     goals = []
     for (const [i, [module, metric, label, kind, target, weekly, unit]] of p.goals.entries()) {
-      const visibility = module === "weight" || module === "budget" ? "summary" : "squad"
+      const visibility = module === "weight" ? "summary" : "squad"
       const compare = module === "weight" ? "max" : (COMPARE[metric] ?? null)
       const [g] = await sql`insert into goals (squad_id, user_id, module, metric, label, kind, target, weekly_target, unit, compare, step, start_value, scored, visibility, position)
         values (${squad!.id}, ${uid}, ${module}, ${metric}, ${label}, ${kind}, ${target}, ${weekly}, ${unit}, ${compare}, ${STEP[metric] ?? null},

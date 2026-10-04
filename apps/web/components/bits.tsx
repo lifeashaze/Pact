@@ -85,6 +85,36 @@ export function CountUp({
 
 export const pct = (n: number) => `${Math.round(n * 100)}%`
 
+// Tracks a CSS media query. False on the server and while hydrating
+export function useMediaQuery(query: string) {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => {
+      const mq = window.matchMedia(query)
+      mq.addEventListener("change", onChange)
+      return () => mq.removeEventListener("change", onChange)
+    },
+    [query]
+  )
+  return React.useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false
+  )
+}
+
+// A keyboard hint. Takes its colour from the text around it so it works on any surface
+export function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
+  return (
+    <kbd
+      className={cn(
+        "inline-grid h-5 min-w-5 place-items-center rounded-md border border-current/25 px-1 font-sans text-[11px] leading-none font-medium opacity-70",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
 export function SectionTitle({
   children,
   action,

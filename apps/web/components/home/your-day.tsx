@@ -4,7 +4,7 @@ import { motion } from "motion/react"
 import { RiCheckLine } from "@remixicon/react"
 
 import { cn } from "@workspace/ui/lib/utils"
-import { hueVar } from "@/components/bits"
+import { Kbd, hueVar } from "@/components/bits"
 import { CardHeader, HomeCard } from "@/components/home/card"
 import { goalTarget, goalValue, seasonPhase, weeklyWorkoutTarget } from "@/components/home/derive"
 import { useSquad, useSeason } from "@/components/squad-store"
@@ -19,7 +19,8 @@ function summary(season: Season, member: Member, log: DayLog | undefined) {
   return `${r.hit} of ${r.total} daily goals done`
 }
 
-// Your goals for today, with what's done. Shows on mobile and desktop at different spots
+// Your goals for today, with what's done. Shows on mobile and desktop at different spots.
+// When the card is wide the goals split into two columns, and the button stays at the bottom
 export function YourDay({ id, index, className }: { id: string; index?: number; className?: string }) {
   const season = useSeason()
   const { TODAY, weekOf, workoutsInWeek } = season
@@ -31,11 +32,11 @@ export function YourDay({ id, index, className }: { id: string; index?: number; 
   const workouts = { done: workoutsInWeek(memberLogs, weekOf(TODAY)), target: weeklyWorkoutTarget(you) }
 
   return (
-    <HomeCard labelledBy={id} index={index} className={className}>
+    <HomeCard labelledBy={id} index={index} className={cn("flex flex-col", className)}>
       <CardHeader id={id} title="Your day" description={summary(season, you, log)} live />
 
       {goals.length > 0 && (
-        <ul className="mt-4 grid grid-cols-1" aria-label="Your daily goals">
+        <ul className="mt-4 grid grid-cols-1 @lg:grid-cols-2 @lg:gap-x-6" aria-label="Your daily goals">
           {goals.map((g) => (
             <GoalRow key={g.id} goal={g} member={you} log={log} detail={log ? goalValue(g, log) : goalTarget(g)} />
           ))}
@@ -57,16 +58,22 @@ export function YourDay({ id, index, className }: { id: string; index?: number; 
       )}
 
       {phase === "during" && (
-        <button
-          type="button"
-          onClick={() => openCheckIn()}
-          className={cn(
-            "mt-5 h-11 w-full rounded-full text-sm font-semibold transition-[transform,background-color] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-            log ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground hover:bg-primary/90"
-          )}
-        >
-          {log ? "Edit today" : "Check in for today"}
-        </button>
+        <div className="mt-auto pt-5">
+          <button
+            type="button"
+            onClick={() => openCheckIn()}
+            aria-keyshortcuts="c"
+            className={cn(
+              "flex h-11 w-full items-center justify-center gap-2 rounded-full text-sm font-semibold transition-[transform,background-color] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              log ? "border border-border hover:bg-muted" : "bg-primary text-primary-foreground hover:bg-primary/90"
+            )}
+          >
+            {log ? "Edit today" : "Check in for today"}
+            <Kbd aria-hidden className="max-lg:hidden">
+              C
+            </Kbd>
+          </button>
+        </div>
       )}
     </HomeCard>
   )
@@ -76,7 +83,7 @@ function GoalRow({ goal, member, log, detail }: { goal: Goal; member: Member; lo
   const hit = isHit(goal, log)
   const missed = !!log && !hit
   return (
-    <li className="flex min-h-11 items-center gap-3 border-t border-border first:border-t-0">
+    <li className="flex min-h-11 items-center gap-3 border-t border-border first:border-t-0 @lg:nth-2:border-t-0">
       <motion.span
         aria-hidden
         className="grid size-5 shrink-0 place-items-center rounded-full"

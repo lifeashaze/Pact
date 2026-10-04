@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { AnimatePresence, motion } from "motion/react"
-import { RiLogoutBoxRLine, RiShieldUserLine } from "@remixicon/react"
+import { RiExpandUpDownLine, RiLogoutBoxRLine, RiShieldUserLine } from "@remixicon/react"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { authClient } from "@/lib/auth/client"
@@ -58,18 +58,26 @@ export function useSignOut() {
   return { signOut, pending }
 }
 
-// Photo button that opens name, email, admin link and sign out
+// Photo button that opens name, email, admin link and sign out.
+// Arrow keys move between items; Escape closes and hands focus back to the photo
 export function AccountMenu({ viewer, placement = "up", className }: { viewer: ShellViewer; placement?: "up" | "down"; className?: string }) {
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
+  const trigger = React.useRef<HTMLButtonElement>(null)
+  const menu = React.useRef<HTMLDivElement>(null)
   const { signOut, pending } = useSignOut()
 
   React.useEffect(() => {
     if (!open) return
+    menu.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus()
     const onDown = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false)
     }
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return
+      setOpen(false)
+      trigger.current?.focus()
+    }
     document.addEventListener("pointerdown", onDown)
     document.addEventListener("keydown", onKey)
     return () => {
@@ -78,25 +86,45 @@ export function AccountMenu({ viewer, placement = "up", className }: { viewer: S
     }
   }, [open])
 
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Tab") return setOpen(false)
+    const items = [...(menu.current?.querySelectorAll<HTMLElement>("[role=menuitem]:not(:disabled)") ?? [])]
+    const at = items.indexOf(document.activeElement as HTMLElement)
+    const next =
+      e.key === "ArrowDown" ? (at + 1) % items.length
+      : e.key === "ArrowUp" ? (at - 1 + items.length) % items.length
+      : e.key === "Home" ? 0
+      : e.key === "End" ? items.length - 1
+      : undefined
+    if (next === undefined) return
+    e.preventDefault()
+    items[next]?.focus()
+  }
+
   return (
     <div ref={ref} className={cn("relative", className)}>
       <button
+        ref={trigger}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="flex w-full items-center gap-3 rounded-xl p-1.5 text-start transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex w-full items-center gap-3 rounded-xl p-1.5 text-start transition-colors hover:bg-muted aria-expanded:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
       >
         <ViewerPhoto viewer={viewer} size={32} />
         <span className="min-w-0 flex-1 max-lg:sr-only">
           <span className="block truncate text-sm font-semibold">{viewer.name}</span>
           <span className="block truncate text-xs text-muted-foreground">{viewer.email}</span>
         </span>
+        <RiExpandUpDownLine aria-hidden className="me-1 size-4 shrink-0 text-muted-foreground max-lg:hidden" />
       </button>
       <AnimatePresence>
         {open && (
           <motion.div
+            ref={menu}
             role="menu"
+            aria-label="Account"
+            onKeyDown={onMenuKey}
             initial={{ opacity: 0, y: placement === "up" ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: placement === "up" ? 4 : -4, scale: 0.98 }}
@@ -115,7 +143,7 @@ export function AccountMenu({ viewer, placement = "up", className }: { viewer: S
                 role="menuitem"
                 href="/admin"
                 onClick={() => setOpen(false)}
-                className="flex h-10 items-center gap-2.5 rounded-lg px-3 text-sm font-medium hover:bg-muted"
+                className="flex h-10 items-center gap-2.5 rounded-lg px-3 text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted"
               >
                 <RiShieldUserLine className="size-4.5 text-muted-foreground" />
                 Admin
@@ -126,7 +154,7 @@ export function AccountMenu({ viewer, placement = "up", className }: { viewer: S
               type="button"
               onClick={signOut}
               disabled={pending}
-              className="flex h-10 items-center gap-2.5 rounded-lg px-3 text-start text-sm font-medium hover:bg-muted disabled:opacity-60"
+              className="flex h-10 items-center gap-2.5 rounded-lg px-3 text-start text-sm font-medium outline-none hover:bg-muted focus-visible:bg-muted disabled:opacity-60"
             >
               <RiLogoutBoxRLine className="size-4.5 text-muted-foreground" />
               {pending ? "Signing out" : "Sign out"}

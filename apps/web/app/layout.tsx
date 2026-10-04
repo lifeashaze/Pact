@@ -20,10 +20,10 @@ const barlowCondensed = Barlow_Condensed({
 })
 
 export const metadata: Metadata = {
-  title: "Pact90",
+  title: "Pact",
   description:
-    "A shared scoreboard for the last 92 days of the year. Pick your own goals for diet, training and habits, check in once a day, and see everyone's numbers.",
-  openGraph: { title: "Pact90", siteName: "Pact90" },
+    "A shared scoreboard for you and your friends until 31 December. Pick your own goals for diet, training and habits, check in once a day, and see everyone's numbers.",
+  openGraph: { title: "Pact", siteName: "Pact" },
   twitter: { card: "summary_large_image" },
 }
 

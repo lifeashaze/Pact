@@ -3,6 +3,7 @@
 import * as React from "react"
 import { AnimatePresence, LayoutGroup, motion } from "motion/react"
 
+import { cn } from "@workspace/ui/lib/utils"
 import { ViewerPhoto } from "@/components/account-menu"
 import type { ProfileStatus } from "@/lib/db/schema"
 import type { MemberRow } from "@/lib/members"
@@ -52,17 +53,29 @@ export function AdminBoard({ initial, viewerId }: { initial: MemberRow[]; viewer
     }
   }
 
+  function onTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0
+    if (!step) return
+    const next = tabs[(tabs.findIndex((t) => t.id === tab) + step + tabs.length) % tabs.length]!
+    setTab(next.id)
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-tab="${next.id}"]`)?.focus()
+  }
+
+  const actions = (m: MemberRow) => <Actions member={m} busy={busy === m.userId} onDecide={(status) => decide(m, status)} />
+
   return (
-    <section className="rounded-3xl bg-card p-3 sm:p-4">
+    <section className="rounded-3xl bg-card p-3 sm:p-4 lg:p-5">
       <LayoutGroup>
-        <div role="tablist" aria-label="Members" className="flex gap-1 rounded-full bg-muted p-1">
+        <div role="tablist" aria-label="Members" onKeyDown={onTabKey} className="flex gap-1 rounded-full bg-muted p-1 lg:w-fit">
           {tabs.map((t) => (
             <button
               key={t.id}
               role="tab"
+              data-tab={t.id}
               aria-selected={tab === t.id}
+              tabIndex={tab === t.id ? 0 : -1}
               onClick={() => setTab(t.id)}
-              className="relative flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold text-muted-foreground transition-colors aria-selected:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+              className="relative flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground aria-selected:text-foreground focus-visible:outline-2 focus-visible:outline-ring lg:flex-none lg:px-5"
             >
               {tab === t.id && (
                 <motion.span layoutId="admin-pill" className="absolute inset-0 rounded-full bg-card shadow-sm" />
@@ -80,7 +93,7 @@ export function AdminBoard({ initial, viewerId }: { initial: MemberRow[]; viewer
         </p>
       )}
 
-      <ul className="mt-2 grid">
+      <ul className="mt-2 grid lg:hidden">
         <AnimatePresence initial={false} mode="popLayout">
           {shown.map((m) => (
             <motion.li
@@ -94,43 +107,113 @@ export function AdminBoard({ initial, viewerId }: { initial: MemberRow[]; viewer
               <ViewerPhoto viewer={m} size={44} />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold">
-                  {m.name}
-                  {m.userId === viewerId && <span className="font-normal text-muted-foreground"> (you)</span>}
-                  {m.isAdmin && m.userId !== viewerId && <span className="font-normal text-muted-foreground"> (admin)</span>}
+                  <Name member={m} viewerId={viewerId} />
                 </p>
                 <p className="truncate text-sm text-muted-foreground">
                   {m.email}, signed up {joined.format(new Date(m.createdAt))}
                 </p>
               </div>
-              {!m.isAdmin && (
-                <div className="flex gap-2 max-sm:w-full max-sm:ps-14">
-                  {m.status !== "approved" && (
-                    <button
-                      type="button"
-                      disabled={busy === m.userId}
-                      onClick={() => decide(m, "approved")}
-                      className="h-10 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.97] disabled:opacity-60 max-sm:flex-1"
-                    >
-                      Let in
-                    </button>
-                  )}
-                  {m.status !== "rejected" && (
-                    <button
-                      type="button"
-                      disabled={busy === m.userId}
-                      onClick={() => decide(m, "rejected")}
-                      className="h-10 rounded-full bg-muted px-5 text-sm font-semibold transition-transform active:scale-[0.97] disabled:opacity-60 max-sm:flex-1"
-                    >
-                      {m.status === "approved" ? "Remove" : "Turn away"}
-                    </button>
-                  )}
-                </div>
-              )}
+              {actions(m)}
             </motion.li>
           ))}
         </AnimatePresence>
       </ul>
+
+      {/* Desktop: a table, so email and sign-up date line up for scanning */}
+      {shown.length > 0 && (
+        <table className="mt-4 w-full border-separate border-spacing-0 text-start max-lg:hidden">
+          <caption className="sr-only">{current.label}</caption>
+          <thead className="text-sm text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-3 pb-2 text-start font-medium">
+                Member
+              </th>
+              <th scope="col" className="px-3 pb-2 text-start font-medium">
+                Email
+              </th>
+              <th scope="col" className="px-3 pb-2 text-start font-medium">
+                Signed up
+              </th>
+              <th scope="col" className="px-3 pb-2 text-end font-medium">
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <AnimatePresence initial={false}>
+              {shown.map((m) => (
+                <motion.tr
+                  key={m.userId}
+                  layout
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, transition: { duration: 0.18 } }}
+                  className="group"
+                >
+                  <td className={cn(cell, "whitespace-nowrap")}>
+                    <div className="flex items-center gap-3">
+                      <ViewerPhoto viewer={m} size={40} />
+                      <span className="font-semibold">
+                        <Name member={m} viewerId={viewerId} />
+                      </span>
+                    </div>
+                  </td>
+                  <td className={cn(cell, "w-full max-w-0 truncate text-muted-foreground")} title={m.email}>
+                    {m.email}
+                  </td>
+                  <td className={cn(cell, "whitespace-nowrap text-muted-foreground tabular-nums")}>
+                    {joined.format(new Date(m.createdAt))}
+                  </td>
+                  <td className={cell}>
+                    <div className="flex justify-end">{actions(m)}</div>
+                  </td>
+                </motion.tr>
+              ))}
+            </AnimatePresence>
+          </tbody>
+        </table>
+      )}
       {shown.length === 0 && <p className="px-3 py-8 text-center text-sm text-muted-foreground">{current.empty}</p>}
     </section>
+  )
+}
+
+const cell = "px-3 py-3 transition-colors group-hover:bg-muted/60 group-focus-within:bg-muted/60 first:rounded-s-2xl last:rounded-e-2xl"
+
+function Name({ member: m, viewerId }: { member: MemberRow; viewerId: string }) {
+  return (
+    <>
+      {m.name}
+      {m.userId === viewerId && <span className="font-normal text-muted-foreground"> (you)</span>}
+      {m.isAdmin && m.userId !== viewerId && <span className="font-normal text-muted-foreground"> (admin)</span>}
+    </>
+  )
+}
+
+function Actions({ member: m, busy, onDecide }: { member: MemberRow; busy: boolean; onDecide: (status: ProfileStatus) => void }) {
+  if (m.isAdmin) return null
+  return (
+    <div className="flex gap-2 max-sm:w-full max-sm:ps-14">
+      {m.status !== "approved" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onDecide("approved")}
+          className="h-10 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground transition-[transform,opacity] hover:opacity-90 active:scale-[0.97] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-sm:flex-1"
+        >
+          Let in
+        </button>
+      )}
+      {m.status !== "rejected" && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onDecide("rejected")}
+          className="h-10 rounded-full bg-muted px-5 text-sm font-semibold transition-[transform,background-color] hover:bg-muted/70 active:scale-[0.97] disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring max-sm:flex-1"
+        >
+          {m.status === "approved" ? "Remove" : "Turn away"}
+        </button>
+      )}
+    </div>
   )
 }

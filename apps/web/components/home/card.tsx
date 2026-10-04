@@ -6,7 +6,8 @@ import { motion } from "motion/react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-// One card shell for every block on home, so padding, radius and entrance match
+// One card shell for every block on home, so padding, radius and entrance match.
+// Each card is a container, so what's inside can densify by the card's own width, not the screen's
 export function HomeCard({
   labelledBy,
   index = 0,
@@ -24,7 +25,7 @@ export function HomeCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 260, damping: 30, delay: 0.04 + index * 0.05 }}
-      className={cn("min-w-0 rounded-3xl bg-card p-5 sm:p-6", className)}
+      className={cn("@container min-w-0 rounded-3xl bg-card p-5 sm:p-6", className)}
     >
       {children}
     </motion.section>

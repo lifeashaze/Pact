@@ -437,7 +437,7 @@ function NumberRow({
 
   let status: string | null = null
   if (scored && value !== undefined) {
-    const diff = roundTo(Math.abs(goal.target! - value), step)
+    const diff = Math.round(Math.abs(goal.target! - value) * 100) / 100
     if (goal.compare === "min") status = hit ? "Goal hit" : `${formatNumber(diff, goal.unit)} to go`
     else status = hit ? `${formatNumber(diff, goal.unit)} under` : `${formatNumber(diff, goal.unit)} over`
   }
@@ -501,8 +501,6 @@ function NumberRow({
     </div>
   )
 }
-
-const roundTo = (n: number, step: number) => Math.round(Math.round(n / step) * step * 100) / 100
 
 function StepButton({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
   return (

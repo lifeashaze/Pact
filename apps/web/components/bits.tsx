@@ -12,7 +12,8 @@ export const hueVar = (hue: Hue) => `var(--m-${hue})`
 export const hueTint = (hue: Hue, pct: number) =>
   `color-mix(in oklab, var(--m-${hue}) ${pct}%, var(--card))`
 
-// Identity comes from the coloured ring and tint; initials stay in text ink
+// Identity comes from the coloured ring and tint; the Google photo sits inside the ring,
+// with initials in text ink when there's no photo or it fails to load
 export function Avatar({
   member,
   size = 40,
@@ -22,6 +23,8 @@ export function Avatar({
   size?: number
   className?: string
 }) {
+  const [broken, setBroken] = React.useState(false)
+  const photo = member.image && !broken ? member.image : null
   return (
     <span
       aria-hidden
@@ -37,7 +40,20 @@ export function Avatar({
         boxShadow: `inset 0 0 0 2px ${hueVar(member.hue)}`,
       }}
     >
-      {member.initials}
+      {photo ? (
+        // Google profile photos come from lh3.googleusercontent.com, a plain img avoids image config
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photo}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setBroken(true)}
+          className="rounded-full object-cover"
+          style={{ width: size - 6, height: size - 6 }}
+        />
+      ) : (
+        member.initials
+      )}
     </span>
   )
 }

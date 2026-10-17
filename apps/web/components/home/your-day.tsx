@@ -23,13 +23,15 @@ function summary(season: Season, member: Member, log: DayLog | undefined) {
 // When the card is wide the goals split into two columns, and the button stays at the bottom
 export function YourDay({ id, index, className }: { id: string; index?: number; className?: string }) {
   const season = useSeason()
-  const { TODAY, weekOf, workoutsInWeek } = season
+  const { TODAY, weekOf, workoutsInWeek, canEdit, longDate } = season
   const { logs, openCheckIn, you } = useSquad()
   const memberLogs = logs[you.id] ?? []
   const log = memberLogs[TODAY]
   const phase = seasonPhase(season)
   const goals = dailyGoals(you)
   const workouts = { done: workoutsInWeek(memberLogs, weekOf(TODAY)), target: weeklyWorkoutTarget(you) }
+  // Forgetting a day is the usual reason to go back, so offer it right here
+  const missedYesterday = phase === "during" && TODAY > 0 && !memberLogs[TODAY - 1] && canEdit(TODAY - 1)
 
   return (
     <HomeCard labelledBy={id} index={index} className={cn("flex flex-col", className)}>
@@ -73,6 +75,16 @@ export function YourDay({ id, index, className }: { id: string; index?: number; 
               C
             </Kbd>
           </button>
+          {missedYesterday && (
+            <button
+              type="button"
+              onClick={() => openCheckIn(TODAY - 1)}
+              aria-label={`Log yesterday, ${longDate(TODAY - 1)}`}
+              className="mt-2 flex h-11 w-full items-center justify-center rounded-full text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              Missed yesterday? Log it
+            </button>
+          )}
         </div>
       )}
     </HomeCard>

@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 
 import type { SeasonViewId } from "@/components/season-views"
 import { type FeedItem, type Reaction, buildFeed } from "@/lib/feed"
-import { type DayLog, type Member, type Season, type SeasonLogs, createSeason, dayResult, isoDay } from "@/lib/season"
+import { type DayLog, type Member, type Season, type SeasonLogs, createSeason, dayIndex, dayResult, isoDay } from "@/lib/season"
 import type { SquadSnapshot } from "@/lib/squad-data"
 
 type Extras = Pick<SquadSnapshot, "reactions" | "comments">
@@ -25,7 +26,8 @@ type SquadState = {
   setSeasonView: (id: SeasonViewId) => void
   openCheckIn: (day?: number) => void
   closeCheckIn: () => void
-  saveCheckIn: (log: DayLog, day: number) => Promise<boolean>
+  // Saves one or more days at once; resolves false if any of them failed
+  saveCheckIn: (changes: { day: number; log: DayLog }[]) => Promise<boolean>
   toggleReaction: (itemId: string, emoji: Reaction) => void
   addComment: (itemId: string, text: string) => void
   nudge: (memberId: string) => void
@@ -49,6 +51,31 @@ async function send(url: string, init: RequestInit) {
   return res
 }
 
+// "Today" comes from the server render, so a tab left open past midnight would
+// keep saving onto yesterday. Re-fetch when the member's date changes under it
+function useDayRollover(startsOn: string, timeZone: string) {
+  const router = useRouter()
+  const onCheck = React.useEffectEvent((seen: number) => {
+    const now = dayIndex(startsOn, new Date(), timeZone)
+    if (now === seen) return seen
+    router.refresh()
+    return now
+  })
+  React.useEffect(() => {
+    // Compared with the day this tab first saw, so a date pinned for development still works
+    let seen = dayIndex(startsOn, new Date(), timeZone)
+    const check = () => {
+      if (document.visibilityState === "visible") seen = onCheck(seen)
+    }
+    const timer = setInterval(check, 60_000)
+    document.addEventListener("visibilitychange", check)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", check)
+    }
+  }, [startsOn, timeZone])
+}
+
 // The squad as the signed-in member sees it. Starts from the server snapshot and
 // updates optimistically as they check in, react and comment
 export function SquadProvider({
@@ -70,6 +97,8 @@ export function SquadProvider({
   const [checkInDay, setCheckInDay] = React.useState(season.TODAY)
   const [toast, setToast] = React.useState<string | null>(null)
   const [seasonView, setSeasonView] = React.useState<SeasonViewId>("lanes")
+
+  useDayRollover(initial.season.startsOn, timeZone)
 
   const feed = React.useMemo(
     () => buildFeed(season, members, logs, { ...extras, timeZone }),
@@ -99,37 +128,70 @@ export function SquadProvider({
           setToast(`Check-ins open on ${season.longDate(0)}`)
           return
         }
+        if (!season.canEdit(day)) {
+          setToast(season.canEdit(season.TODAY) ? `${season.longDate(day)} is locked now` : "The season is over")
+          return
+        }
         setCheckInDay(day)
         setCheckInOpen(true)
       },
       closeCheckIn: () => setCheckInOpen(false),
-      saveCheckIn: async (log, day) => {
-        const before = logs
-        const wasLogged = !!logs[you.id]?.[day]
-        const saved = { ...log, savedAt: log.savedAt ?? new Date().toISOString() }
-        setLogs((all) => ({ ...all, [you.id]: (all[you.id] ?? []).map((l, i) => (i === day ? saved : l)) }))
+      saveCheckIn: async (changes) => {
+        if (changes.length === 0) return true
+        const mine = logs[you.id] ?? []
+        // The server stamps every save, edits included, so the feed time matches after a reload
+        const now = new Date().toISOString()
+        const next = new Map(changes.map(({ day, log }) => [day, { ...log, savedAt: now }]))
+        setLogs((all) => ({ ...all, [you.id]: (all[you.id] ?? []).map((l, i) => next.get(i) ?? l) }))
         setCheckInOpen(false)
-        const r = dayResult(you, log)
-        const summary = r.total ? `${r.hit} of ${r.total} goals` : "saved"
-        try {
-          await send(`/api/check-ins/${isoDay(season.startsOn, day)}`, {
-            method: "PUT",
-            body: JSON.stringify({
-              entries: you.goals.map((g) => ({
-                goalId: g.dbId,
-                checked: g.kind === "check" ? !!log.checks[g.id] : undefined,
-                value: g.kind === "number" ? (log.numbers[g.id] ?? null) : undefined,
-                note: g.id === "workout" ? (log.workoutName ?? null) : undefined,
-              })),
-            }),
-          })
-          setToast(wasLogged ? "Check-in updated" : day === season.TODAY ? `Checked in. ${summary} today` : `Saved ${season.longDate(day)}`)
-          return true
-        } catch (e) {
-          setLogs(before)
-          fail(e)
+
+        const results = await Promise.allSettled(
+          changes.map(({ day, log }) =>
+            send(`/api/check-ins/${isoDay(season.startsOn, day)}`, {
+              method: "PUT",
+              body: JSON.stringify({
+                entries: you.goals.map((g) => ({
+                  goalId: g.dbId,
+                  checked: g.kind === "check" ? !!log.checks[g.id] : undefined,
+                  value: g.kind === "number" ? (log.numbers[g.id] ?? null) : undefined,
+                  note: g.id === "workout" ? (log.workoutName ?? null) : undefined,
+                })),
+              }),
+            })
+          )
+        )
+
+        // Put back only the days that didn't save
+        const failed = changes.filter((_, i) => results[i]!.status === "rejected")
+        if (failed.length) {
+          const undo = new Map(failed.map(({ day }) => [day, mine[day]]))
+          setLogs((all) => ({ ...all, [you.id]: (all[you.id] ?? []).map((l, i) => (undo.has(i) ? undo.get(i) : l)) }))
+          const reason = results.find((r) => r.status === "rejected") as PromiseRejectedResult
+          fail(
+            failed.length === changes.length
+              ? reason.reason
+              : new Error(`Couldn't save ${failed.map(({ day }) => season.shortDate(day)).join(", ")}. ${reason.reason?.message ?? ""}`.trim())
+          )
           return false
         }
+
+        if (changes.length > 1) {
+          setToast(`Saved ${changes.length} days`)
+        } else {
+          const { day, log } = changes[0]!
+          const r = dayResult(you, log)
+          const summary = r.total ? `${r.hit} of ${r.total} goals` : "saved"
+          setToast(
+            mine[day]
+              ? day === season.TODAY
+                ? "Check-in updated"
+                : `Updated ${season.longDate(day)}`
+              : day === season.TODAY
+                ? `Checked in. ${summary} today`
+                : `Saved ${season.longDate(day)}`
+          )
+        }
+        return true
       },
       toggleReaction: (itemId, emoji) => {
         const mine = extras.reactions.some((r) => r.eventId === itemId && r.userId === you.id && r.emoji === emoji)

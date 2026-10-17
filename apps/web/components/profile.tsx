@@ -15,6 +15,7 @@ import {
 import { useSquad, useSeason } from "@/components/squad-store"
 import { getModule } from "@/lib/modules"
 import {
+  EDIT_WINDOW_DAYS,
   dailyGoals,
   formatNumber,
   isHit,
@@ -100,7 +101,7 @@ export function Profile({ id }: { id: string }) {
           animate={{ scaleX: 1 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
         />
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4 sm:flex-nowrap">
           <Avatar member={member} size={64} />
           <div className="min-w-0">
             <h1 className="font-display text-4xl leading-none font-semibold tracking-tight">
@@ -118,7 +119,8 @@ export function Profile({ id }: { id: string }) {
             </p>
           </div>
           {member.isYou && (
-            <div className="ms-auto hidden gap-2 sm:flex">
+            // Below sm the buttons drop under the name instead of squeezing it
+            <div className="flex w-full gap-2 max-sm:order-last sm:ms-auto sm:w-auto">
               <Link
                 href="/onboarding?edit=1"
                 className="inline-flex h-10 items-center rounded-full px-4 text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
@@ -261,10 +263,14 @@ export function Profile({ id }: { id: string }) {
 
             <Card
               title="Consistency"
-              sub="How much of each day's goals got done"
+              sub={
+                member.isYou
+                  ? `How much of each day's goals got done. Tap a day from the last ${EDIT_WINDOW_DAYS} to change it`
+                  : "How much of each day's goals got done"
+              }
               className="lg:col-span-2"
             >
-              <ConsistencyCalendar member={member} logs={memberLogs} />
+              <ConsistencyCalendar member={member} logs={memberLogs} onOpenDay={member.isYou ? openCheckIn : undefined} />
             </Card>
 
             {numberGoals.map((g, i) => (

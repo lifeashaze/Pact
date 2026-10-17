@@ -10,6 +10,7 @@ import { useSeason, useSquad } from "@/components/squad-store"
 import {
   BACKFILL_UNTIL,
   type DayLog,
+  EDIT_WINDOW_DAYS,
   type Goal,
   type Hue,
   dailyGoals,
@@ -109,25 +110,34 @@ const noSubscribe = () => () => {}
 const useIsMac = () =>
   React.useSyncExternalStore(noSubscribe, () => /Mac|iPhone|iPad/.test(navigator.userAgent), () => false)
 
-function blankLog(goals: Goal[], logs: (DayLog | undefined)[]): DayLog {
-  const log: DayLog = { checks: {}, numbers: {} }
-  // Start the scale from the recent average so it's a nudge, not typing from zero
-  if (goals.some((g) => g.id === "weight")) {
-    const avg = latestAverage(logs)
-    if (avg !== undefined) log.numbers.weight = Math.round(avg * 10) / 10
-  }
-  return log
+const blankLog = (): DayLog => ({ checks: {}, numbers: {} })
+
+// Whether a draft would change what's saved for the day
+function sameLog(a: DayLog, b: DayLog) {
+  const on = (l: DayLog) => Object.keys(l.checks).filter((k) => l.checks[k]).sort()
+  const nums = (l: DayLog) => Object.entries(l.numbers).filter(([, v]) => v !== undefined).sort(([x], [y]) => x.localeCompare(y))
+  return (
+    JSON.stringify([on(a), nums(a), a.workoutName ?? null]) === JSON.stringify([on(b), nums(b), b.workoutName ?? null])
+  )
 }
 
+const weekdayShort = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" })
+
 function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
-  const { TODAY, FIRST_EDITABLE, SEASON_START, backfillOpen, longDate, shortDate, weekOf, workoutsInWeek } = useSeason()
+  const { TODAY, FIRST_EDITABLE, SEASON_START, backfillOpen, dateOf, longDate, shortDate, weekOf, workoutsInWeek } = useSeason()
   const { logs, saveCheckIn, closeCheckIn, you, checkInDay } = useSquad()
   const mine = logs[you.id] ?? []
   const [day, setDay] = React.useState(checkInDay)
   const [drafts, setDrafts] = React.useState<Record<number, DayLog>>({})
   const existing = mine[day]
-  const log = drafts[day] ?? (existing ? structuredClone(existing) : blankLog(you.goals, mine.slice(0, day)))
+  const saved = (d: number) => mine[d] ?? blankLog()
+  const log = drafts[day] ?? structuredClone(saved(day))
   const setLog = (update: (l: DayLog) => DayLog) => setDrafts((d) => ({ ...d, [day]: update(log) }))
+  // Days other than the one on screen with changes that still need saving
+  const dirty = (d: number) => !!drafts[d] && (!mine[d] || !sameLog(drafts[d]!, mine[d]!))
+  // Start the scale from the recent average, as a hint rather than a saved weigh-in
+  const avg = latestAverage(mine.slice(0, day))
+  const weightHint = avg === undefined ? undefined : Math.round(avg * 10) / 10
   const [saving, setSaving] = React.useState(false)
   const firstControl = React.useRef<HTMLButtonElement>(null)
   React.useEffect(() => firstControl.current?.focus(), [])
@@ -153,11 +163,20 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
   const setCheck = (id: string, on: boolean) => setLog((l) => ({ ...l, checks: { ...l.checks, [id]: on } }))
   const setNumber = (id: string, n: number | undefined) => setLog((l) => ({ ...l, numbers: { ...l.numbers, [id]: n } }))
 
+  // Saves the day on screen, plus any other day changed before switching tabs,
+  // so switching days never quietly throws edits away
   async function save() {
     setSaving(true)
-    const ok = await saveCheckIn(log, day)
+    const others = Object.keys(drafts)
+      .map(Number)
+      .filter((d) => d !== day && dirty(d))
+    const changes = [...others, day].sort((a, b) => a - b).map((d) => ({ day: d, log: d === day ? log : drafts[d]! }))
+    const ok = await saveCheckIn(changes)
     if (!ok) setSaving(false)
   }
+  const pending = Object.keys(drafts)
+    .map(Number)
+    .filter((d) => d !== day && dirty(d)).length
 
   // Cmd/Ctrl+Enter saves from anywhere in the form
   const isMac = useIsMac()
@@ -172,12 +191,12 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
     return () => document.removeEventListener("keydown", listener)
   }, [])
 
-  // Today and yesterday, or every day since the start while late joiners can still catch up
+  // The last week, or every day since the start while late joiners can still catch up
   const days = Array.from({ length: Math.max(0, TODAY - FIRST_EDITABLE + 1) }, (_, i) => FIRST_EDITABLE + i)
-  const catchingUp = backfillOpen && FIRST_EDITABLE < TODAY - 1
-  const dayName = (d: number) => (d === TODAY ? "today" : d === TODAY - 1 ? "yesterday" : shortDate(d))
-  const tabName = (d: number) => (d === TODAY ? "Today" : d === TODAY - 1 ? "Yesterday" : shortDate(d))
+  const catchingUp = backfillOpen && FIRST_EDITABLE === 0
+  const dayName = (d: number) => (d === TODAY ? "today" : d === TODAY - 1 ? "yesterday" : `${weekdayShort.format(dateOf(d))} ${shortDate(d)}`)
   const backfillEnds = shortDate(Math.round((Date.parse(BACKFILL_UNTIL) - SEASON_START) / 86_400_000))
+  const missed = days.filter((d) => d !== TODAY && !mine[d]).length
 
   return (
     <>
@@ -211,34 +230,48 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
           {days.length > 1 && (
             <div className="pb-3 lg:pb-6">
               <LayoutGroup id="check-in-day">
-                {/* Wraps onto a second row when catching up on a whole week */}
-                <div role="tablist" aria-label="Day" className="flex w-fit max-w-full flex-wrap gap-1 rounded-[1.25rem] bg-muted p-1">
+                {/* One cell per editable day, oldest first. A dot marks days already saved, a ring marks unsaved changes */}
+                <div
+                  role="tablist"
+                  aria-label="Day"
+                  className="grid auto-cols-fr grid-flow-col gap-1 rounded-[1.25rem] bg-muted p-1 lg:max-w-none"
+                >
                   {days.map((d) => (
                     <button
                       key={d}
+                      type="button"
                       role="tab"
                       aria-selected={day === d}
+                      aria-label={`${longDate(d)}${mine[d] ? ", saved" : ", not logged"}${dirty(d) ? ", unsaved changes" : ""}`}
                       onClick={() => setDay(d)}
-                      className="relative h-8 rounded-full px-4 text-sm font-semibold text-muted-foreground transition-colors aria-selected:text-foreground"
+                      className="relative flex h-14 min-w-0 flex-col items-center justify-center rounded-2xl text-muted-foreground transition-colors aria-selected:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
                     >
-                      {day === d && <motion.span layoutId="day-pill" className="absolute inset-0 rounded-full bg-card shadow-sm" />}
-                      <span className="relative">
-                        {tabName(d)}
-                        {mine[d] && <span className="sr-only"> (saved)</span>}
+                      {day === d && <motion.span layoutId="day-pill" className="absolute inset-0 rounded-2xl bg-card shadow-sm" />}
+                      <span className="relative text-[0.6875rem] font-medium uppercase tracking-wide">
+                        {d === TODAY ? "Today" : weekdayShort.format(dateOf(d))}
                       </span>
-                      {/* Shows which missed days are already filled in */}
-                      {catchingUp && mine[d] && (
-                        <span aria-hidden className="relative ms-1.5 inline-block size-1.5 rounded-full bg-current align-middle" />
-                      )}
+                      <span className="relative font-display text-lg leading-tight font-semibold tabular-nums">
+                        {dateOf(d).getUTCDate()}
+                      </span>
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "relative size-1.5 rounded-full",
+                          dirty(d) ? "ring-[1.5px] ring-current" : mine[d] ? "" : "opacity-0"
+                        )}
+                        style={!dirty(d) && mine[d] ? { background: hueVar(you.hue) } : undefined}
+                      />
                     </button>
                   ))}
                 </div>
               </LayoutGroup>
-              {catchingUp && (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Joined late? Until {backfillEnds} you can fill in any day since the season started.
-                </p>
-              )}
+              <p className="mt-2 text-sm text-muted-foreground">
+                {catchingUp
+                  ? `Joined late? Until ${backfillEnds} you can fill in any day since the season started.`
+                  : missed > 0
+                    ? `${missed} earlier ${missed === 1 ? "day" : "days"} not logged yet. Days lock after ${EDIT_WINDOW_DAYS} days.`
+                    : `You can change any of these. Days lock after ${EDIT_WINDOW_DAYS} days.`}
+              </p>
             </div>
           )}
 
@@ -329,7 +362,14 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
                     onChange={(on) => setCheck(g.id, on)}
                   />
                 ) : (
-                  <NumberRow key={g.id} hue={you.hue} goal={g} value={log.numbers[g.id]} onChange={(n) => setNumber(g.id, n)} />
+                  <NumberRow
+                    key={g.id}
+                    hue={you.hue}
+                    goal={g}
+                    value={log.numbers[g.id]}
+                    hint={g.id === "weight" ? weightHint : undefined}
+                    onChange={(n) => setNumber(g.id, n)}
+                  />
                 )
               )}
             </Group>
@@ -343,7 +383,7 @@ function CheckInForm({ onGrab }: { onGrab: (e: React.PointerEvent) => void }) {
             aria-keyshortcuts={isMac ? "Meta+Enter" : "Control+Enter"}
             className="h-13 w-full rounded-full bg-primary text-base font-semibold text-primary-foreground transition-[transform,background-color] hover:bg-primary/90 active:scale-[0.98] disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            {saving ? "Saving" : existing ? "Save changes" : "Save check-in"}
+            {saving ? "Saving" : pending > 0 ? `Save ${pending + 1} days` : existing ? "Save changes" : "Save check-in"}
           </button>
           <p className="mt-3 hidden items-center justify-center gap-1 text-xs text-muted-foreground lg:flex" aria-hidden>
             <Kbd>{isMac ? "⌘" : "Ctrl"}</Kbd>
@@ -415,21 +455,48 @@ const ToggleRow = React.forwardRef<
   )
 })
 
+// Keeps the typed text while it's mid-edit ("72." or "0.") so the decimal point
+// isn't swallowed, and only reports numbers. Minus signs and letters are dropped
+function useNumberText(value: number | undefined, onChange: (n: number | undefined) => void) {
+  const [text, setText] = React.useState(value?.toString() ?? "")
+  const [prev, setPrev] = React.useState(value)
+  if (value !== prev) {
+    // Changed from outside (the steppers, or switching day): show the new value
+    setPrev(value)
+    const typed = text === "" || text === "." ? undefined : Number(text)
+    if (typed !== value) setText(value?.toString() ?? "")
+  }
+  const onText = (raw: string) => {
+    let clean = raw.replace(",", ".").replace(/[^\d.]/g, "")
+    const dot = clean.indexOf(".")
+    if (dot !== -1) clean = clean.slice(0, dot + 1) + clean.slice(dot + 1).replace(/\./g, "")
+    setText(clean)
+    onChange(clean === "" || clean === "." ? undefined : Number(clean))
+  }
+  return [text, onText] as const
+}
+
 function NumberRow({
   hue,
   goal,
   value,
+  hint,
   onChange,
 }: {
   hue: Hue
   goal: Goal
   value: number | undefined
+  // Shown greyed out and used as the steppers' starting point, but not saved
+  hint?: number
   onChange: (n: number | undefined) => void
 }) {
   const step = goal.step ?? 1
   const hit = goal.target !== undefined && isHit(goal, { checks: {}, numbers: { [goal.id]: value } })
   const scored = goal.scored && goal.target !== undefined
+  const [text, onText] = useNumberText(value, onChange)
   const bump = (dir: 1 | -1) => {
+    // From empty, the first tap lands on the hint (or target) rather than stepping past it
+    if (value === undefined && hint !== undefined) return onChange(hint)
     const base = value ?? (goal.compare === "max" ? (goal.target ?? 0) : goal.id === "weight" ? (goal.startValue ?? 0) : 0)
     onChange(Math.max(0, Math.round((base + dir * step) * 100) / 100))
   }
@@ -451,7 +518,9 @@ function NumberRow({
           <span className="font-medium">{goal.label}</span>
           <span className="text-sm text-muted-foreground">
             {goal.id === "weight"
-              ? "Morning weigh-in"
+              ? hint !== undefined && value === undefined
+                ? "Morning weigh-in. Leave blank to skip"
+                : "Morning weigh-in"
               : goal.target !== undefined
                 ? `${goal.compare === "max" ? "At most" : "At least"} ${formatNumber(goal.target, goal.unit)}`
                 : "Tracked"}
@@ -466,14 +535,9 @@ function NumberRow({
             <input
               id={id}
               inputMode="decimal"
-              value={value ?? ""}
-              placeholder="0"
-              onChange={(e) => {
-                const raw = e.target.value.replace(",", ".")
-                if (raw === "") return onChange(undefined)
-                const n = Number(raw)
-                if (!Number.isNaN(n)) onChange(n)
-              }}
+              value={text}
+              placeholder={hint !== undefined ? `${hint}` : "0"}
+              onChange={(e) => onText(e.target.value)}
               className="w-20 bg-transparent text-end font-display text-2xl font-semibold tabular-nums outline-none placeholder:text-muted-foreground/50"
             />
             <span className="w-10 text-sm text-muted-foreground">{prefix || goal.unit === "steps" ? "" : goal.unit}</span>

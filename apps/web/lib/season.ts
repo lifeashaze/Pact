@@ -76,14 +76,28 @@ export function dayIndex(startsOn: string, date: Date, timeZone: string) {
 export const isoDay = (startsOn: string, day: number) =>
   new Date(Date.parse(startsOn) + day * DAY_MS).toISOString().slice(0, 10)
 
+// Day index for a YYYY-MM-DD string, or null when it isn't a real date.
+// Date.parse rolls "2026-11-31" over to 1 Dec, so the round trip catches it
+export function dayOfIso(startsOn: string, day: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
+  const index = Math.round((Date.parse(day) - Date.parse(startsOn)) / DAY_MS)
+  if (Number.isNaN(index) || isoDay(startsOn, index) !== day) return null
+  return index
+}
+
 // People who joined after the season started can fill in every missed day until this date
-// (inclusive, in their own time zone). After it, only today and yesterday stay open
+// (inclusive, in their own time zone). After it, the last week stays open
 export const BACKFILL_UNTIL = "2026-10-07"
 
-// Earliest day index a member can still log or edit, given their today
+// How many days, counting today, a check-in can still be logged or changed.
+// Older days are locked so past weeks' standings can't be rewritten
+export const EDIT_WINDOW_DAYS = 7
+
+// Earliest day index a member can still log or edit, given their today.
+// `today` is the real day index, which can run past the end of the season
 export function firstEditableDay(startsOn: string, today: number) {
   if (isoDay(startsOn, today) <= BACKFILL_UNTIL) return 0
-  return Math.max(0, today - 1)
+  return Math.max(0, today - (EDIT_WINDOW_DAYS - 1))
 }
 
 // ---------- helpers that don't depend on the date ----------
@@ -228,7 +242,9 @@ export function createSeason(info: SeasonInfo) {
     WEEKS,
     started: info.today >= 0,
     ended: info.today >= SEASON_DAYS,
-    FIRST_EDITABLE: firstEditableDay(info.startsOn, TODAY),
+    // Uses the real today, so the window keeps closing after the last day like it does on the server
+    FIRST_EDITABLE: firstEditableDay(info.startsOn, info.today),
+    canEdit: (day: number) => day >= firstEditableDay(info.startsOn, info.today) && day <= TODAY && day >= 0,
     backfillOpen: isoDay(info.startsOn, TODAY) <= BACKFILL_UNTIL,
     daysUntilStart: Math.max(0, -info.today),
     dateOf,

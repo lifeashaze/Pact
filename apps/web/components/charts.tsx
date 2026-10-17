@@ -275,8 +275,17 @@ function levelFill(member: Member, score: number) {
   return hueTint(member.hue, 22)
 }
 
-export function ConsistencyCalendar({ member, logs }: { member: Member; logs: Logs }) {
-  const { TODAY, dateOf, weekdayDate } = useSeason()
+// With onOpenDay, days that can still be changed become buttons that open them
+export function ConsistencyCalendar({
+  member,
+  logs,
+  onOpenDay,
+}: {
+  member: Member
+  logs: Logs
+  onOpenDay?: (day: number) => void
+}) {
+  const { TODAY, dateOf, weekdayDate, canEdit } = useSeason()
   const [hover, setHover] = React.useState<{ day: number; x: number; y: number; w: number } | null>(null)
   const wrap = React.useRef<HTMLDivElement>(null)
 
@@ -298,27 +307,34 @@ export function ConsistencyCalendar({ member, logs }: { member: Member; logs: Lo
                   const log = logs[day]
                   const future = day > TODAY
                   const r = dayResult(member, log)
-                  const score = log ? r.hit / r.total : 0
+                  // Someone with only a weekly workout goal has no daily goals; checking in is the whole day
+                  const score = log ? (r.total ? r.hit / r.total : 1) : 0
                   const isToday = day === TODAY
+                  const editable = !!onOpenDay && canEdit(day)
+                  const label = `${weekdayDate(day)}: ${future ? "upcoming" : log ? (r.total ? `${r.hit} of ${r.total} goals` : "checked in") : "no check-in"}`
+                  const Cell = editable ? "button" : "span"
                   return (
-                    <span
-                      key={day}
-                      role="gridcell"
-                      aria-label={`${weekdayDate(day)}: ${future ? "upcoming" : log ? `${r.hit} of ${r.total} goals` : "no check-in"}`}
-                      className={cn(
-                        "aspect-square rounded-[3px] sm:rounded-[5px]",
-                        future && "border border-dashed border-border",
-                        !future && !log && "bg-muted",
-                        isToday && "ring-2 ring-foreground ring-offset-1 ring-offset-card"
-                      )}
-                      style={!future && log ? { background: levelFill(member, score) } : undefined}
-                      onPointerEnter={(e) => {
-                        if (future || !wrap.current) return
-                        const box = wrap.current.getBoundingClientRect()
-                        const cell = e.currentTarget.getBoundingClientRect()
-                        setHover({ day, x: cell.left - box.left + cell.width / 2, y: cell.top - box.top, w: box.width })
-                      }}
-                    />
+                    <span key={day} role="gridcell" className="grid">
+                      <Cell
+                        {...(editable
+                          ? { type: "button" as const, onClick: () => onOpenDay(day), "aria-label": `${label}. ${log ? "Edit" : "Log"} this day` }
+                          : { "aria-label": label })}
+                        className={cn(
+                          "aspect-square rounded-[3px] sm:rounded-[5px]",
+                          future && "border border-dashed border-border",
+                          !future && !log && "bg-muted",
+                          isToday && "ring-2 ring-foreground ring-offset-1 ring-offset-card",
+                          editable && "cursor-pointer transition-transform hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                        )}
+                        style={!future && log ? { background: levelFill(member, score) } : undefined}
+                        onPointerEnter={(e: React.PointerEvent<HTMLElement>) => {
+                          if (future || !wrap.current) return
+                          const box = wrap.current.getBoundingClientRect()
+                          const cell = e.currentTarget.getBoundingClientRect()
+                          setHover({ day, x: cell.left - box.left + cell.width / 2, y: cell.top - box.top, w: box.width })
+                        }}
+                      />
+                    </span>
                   )
                 })}
               </div>
@@ -327,7 +343,7 @@ export function ConsistencyCalendar({ member, logs }: { member: Member; logs: Lo
         })}
         {hover && (
           <Tooltip x={hover.x} y={hover.y} width={hover.w}>
-            <CalendarTip member={member} day={hover.day} log={logs[hover.day]} />
+            <CalendarTip member={member} day={hover.day} log={logs[hover.day]} editable={!!onOpenDay && canEdit(hover.day)} />
           </Tooltip>
         )}
       </div>
@@ -347,7 +363,7 @@ export function ConsistencyCalendar({ member, logs }: { member: Member; logs: Lo
   )
 }
 
-function CalendarTip({ member, day, log }: { member: Member; day: number; log: DayLog | undefined }) {
+function CalendarTip({ member, day, log, editable }: { member: Member; day: number; log: DayLog | undefined; editable: boolean }) {
   const { weekdayDate } = useSeason()
   const r = dayResult(member, log)
   return (
@@ -355,14 +371,15 @@ function CalendarTip({ member, day, log }: { member: Member; day: number; log: D
       <div className="font-medium">{weekdayDate(day)}</div>
       {log ? (
         <>
-          <div className="text-muted-foreground">
-            {r.hit} of {r.total} daily goals
-          </div>
-          <div className="text-muted-foreground">{log.workoutName ?? "Rest day"}</div>
+          <div className="text-muted-foreground">{r.total ? `${r.hit} of ${r.total} daily goals` : "Checked in"}</div>
+          {workoutGoal(member) && (
+            <div className="text-muted-foreground">{log.checks.workout ? (log.workoutName ?? "Worked out") : "Rest day"}</div>
+          )}
         </>
       ) : (
         <div className="text-muted-foreground">No check-in</div>
       )}
+      {editable && <div className="mt-1 font-medium">Click to {log ? "edit" : "log"}</div>}
     </>
   )
 }

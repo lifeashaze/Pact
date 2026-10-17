@@ -3,13 +3,13 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm"
 import { bad, memberOrError, readJson } from "@/lib/api"
 import { db } from "@/lib/db"
 import { checkIns, entries, goals } from "@/lib/db/schema"
-import { firstEditableDay } from "@/lib/season"
+import { EDIT_WINDOW_DAYS, dayOfIso, firstEditableDay } from "@/lib/season"
 
 type Body = { entries?: { goalId?: unknown; checked?: unknown; value?: unknown; note?: unknown }[] }
 
 // Save one day's check-in: every goal's value, and that the day was logged.
-// Today and yesterday can be written; older days are locked, except during the
-// late-joiner backfill window when every day since the start is open
+// The last EDIT_WINDOW_DAYS days can be written; older days are locked, except during
+// the late-joiner backfill window when every day since the start is open
 export async function PUT(req: Request, ctx: RouteContext<"/api/check-ins/[day]">) {
   const auth = await memberOrError()
   if (auth.error) return auth.error
@@ -17,11 +17,13 @@ export async function PUT(req: Request, ctx: RouteContext<"/api/check-ins/[day]"
   if (!member.onboardedAt) return bad("Finish setting up first", 403)
 
   const { day } = await ctx.params
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return bad("Day must be YYYY-MM-DD")
-  const index = Math.round((Date.parse(day) - Date.parse(squad.startsOn)) / 86_400_000)
-  if (Number.isNaN(index) || index < 0 || index >= squad.days) return bad("That day isn't part of the season")
+  const index = dayOfIso(squad.startsOn, day)
+  if (index === null) return bad("Day must be a real date as YYYY-MM-DD")
+  if (index < 0 || index >= squad.days) return bad("That day isn't part of the season")
   if (index > today) return bad("That day hasn't happened yet")
-  if (index < firstEditableDay(squad.startsOn, today)) return bad("Only today and yesterday can be changed")
+  if (index < firstEditableDay(squad.startsOn, today)) {
+    return bad(`Check-ins older than ${EDIT_WINDOW_DAYS} days are locked`)
+  }
 
   const body = await readJson<Body>(req)
   if (!body || !Array.isArray(body.entries) || body.entries.length > 50) return bad("Send an entries array")
@@ -33,11 +35,17 @@ export async function PUT(req: Request, ctx: RouteContext<"/api/check-ins/[day]"
   const kinds = new Map(mine.map((g) => [g.id, g.kind]))
 
   const rows: (typeof entries.$inferInsert)[] = []
+  const seen = new Set<string>()
   for (const e of body.entries) {
     if (typeof e.goalId !== "string" || !kinds.has(e.goalId)) return bad("Unknown goal")
+    // One row per goal per day, so a repeated goal would fail the insert
+    if (seen.has(e.goalId)) return bad("Each goal can only appear once")
+    seen.add(e.goalId)
     const kind = kinds.get(e.goalId)
-    const value = e.value === null || e.value === undefined ? null : Number(e.value)
-    if (value !== null && (!Number.isFinite(value) || value < 0 || value > 1_000_000)) return bad("Numbers must be positive")
+    const value = e.value === null || e.value === undefined || e.value === "" ? null : Number(e.value)
+    if (value !== null && (!Number.isFinite(value) || value < 0 || value > 1_000_000)) {
+      return bad("Numbers must be between 0 and 1,000,000")
+    }
     const note = typeof e.note === "string" ? e.note.trim().slice(0, 60) || null : null
     rows.push({
       goalId: e.goalId,

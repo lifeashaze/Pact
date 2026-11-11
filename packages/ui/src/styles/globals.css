@@ -33,6 +33,9 @@
     --m-orange: #eb6834;
     --m-aqua: #1baf7a;
     --m-violet: #4a3aa7;
+    /* Weight records and badges */
+    --gold: #c98a00;
+    --gold-soft: #fbe7b0;
     /* Chart chrome */
     --grid: #e9ebef;
     --axis: #c9ccd4;
@@ -75,6 +78,8 @@
     --m-orange: #d95926;
     --m-aqua: #199e70;
     --m-violet: #9085e9;
+    --gold: #f2b934;
+    --gold-soft: #4a3a12;
     --grid: #252831;
     --axis: #3a3f4b;
     --axis-label: #8d93a1;
@@ -136,6 +141,8 @@
     --color-m-orange: var(--m-orange);
     --color-m-aqua: var(--m-aqua);
     --color-m-violet: var(--m-violet);
+    --color-gold: var(--gold);
+    --color-gold-soft: var(--gold-soft);
     --color-grid: var(--grid);
     --color-axis: var(--axis);
     --color-axis-label: var(--axis-label);

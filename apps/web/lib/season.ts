@@ -102,12 +102,21 @@ export function firstEditableDay(startsOn: string, today: number) {
 
 // ---------- helpers that don't depend on the date ----------
 
+// A calorie limit still counts as hit up to this far over it, so 1,515 on a 1,500 limit is fine
+export const CALORIE_LEEWAY = 15
+
+// Whether a logged number meets its goal. Recomputed from the raw value everywhere,
+// so changing the rule applies to every past day too
+export function meetsTarget(goal: Pick<Goal, "target" | "compare" | "unit">, value: number | undefined) {
+  if (value === undefined || goal.target === undefined) return false
+  if (goal.compare === "max") return value <= goal.target + (goal.unit === "kcal" ? CALORIE_LEEWAY : 0)
+  return value >= goal.target
+}
+
 export function isHit(goal: Goal, log: DayLog | undefined) {
   if (!log) return false
   if (goal.kind === "check") return !!log.checks[goal.id]
-  const v = log.numbers[goal.id]
-  if (v === undefined || goal.target === undefined) return false
-  return goal.compare === "max" ? v <= goal.target : v >= goal.target
+  return meetsTarget(goal, log.numbers[goal.id])
 }
 
 // Goals scored every day: everything scored except the weekly workout target

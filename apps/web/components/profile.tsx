@@ -12,6 +12,7 @@ import {
   WeeklyWorkouts,
   WeightChart,
 } from "@/components/charts"
+import { PersonalBests, WeightProgress } from "@/components/weight-progress"
 import { useSquad, useSeason } from "@/components/squad-store"
 import { getModule } from "@/lib/modules"
 import {
@@ -71,7 +72,12 @@ export function Profile({ id }: { id: string }) {
       ? avg - member.goalWeight
       : undefined
   const numberGoals = member.goals.filter(
-    (g) => g.kind === "number" && g.target !== undefined && g.id !== "weight"
+    (g) =>
+      g.kind === "number" &&
+      g.target !== undefined &&
+      g.id !== "weight" &&
+      // Steps are logged but not charted here
+      g.module !== "steps"
   )
   const week = weekOf(TODAY)
   const modules = [
@@ -82,6 +88,8 @@ export function Profile({ id }: { id: string }) {
     ),
   ]
   const unit = kg ? " kg" : "%"
+  // Kilo-based progress only where the real numbers are visible
+  const weightStats = !!weight && kg
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 lg:px-10 lg:pt-10">
@@ -198,8 +206,8 @@ export function Profile({ id }: { id: string }) {
         // Wide screens move today and the weekly workouts into a side column. Today
         // comes first in the markup, so phones still open on it
         <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
-          <div className="grid min-w-0 content-start gap-6 xl:col-start-2 xl:row-start-1">
-            <Card title="Today">
+          <div className="grid min-w-0 content-start gap-6 sm:grid-cols-2 xl:grid-cols-1 xl:col-start-2 xl:row-start-1">
+            <Card title="Today" className="sm:col-span-2 xl:col-span-1">
               {today ? (
                 <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   {wGoal && (
@@ -244,6 +252,19 @@ export function Profile({ id }: { id: string }) {
                 <WeeklyWorkouts member={member} logs={memberLogs} />
               </Card>
             )}
+
+            {weightStats && (
+              <Card title="This week" sub="Weight change, and share of body weight">
+                <WeightProgress member={member} logs={memberLogs} />
+              </Card>
+            )}
+
+            <Card
+              title="Personal bests"
+              className={cn(!weightStats && "sm:col-span-2 xl:col-span-1")}
+            >
+              <PersonalBests member={member} logs={memberLogs} showWeight={weightStats} />
+            </Card>
           </div>
 
           <div className="grid min-w-0 content-start gap-6 lg:grid-cols-2 xl:col-start-1 xl:row-start-1">

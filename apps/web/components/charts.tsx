@@ -5,7 +5,8 @@ import { motion, useInView } from "motion/react"
 
 import { cn } from "@workspace/ui/lib/utils"
 import { hueTint, hueVar } from "@/components/bits"
-import { type DayLog, type Goal, type Member, dayResult, formatNumber, isHit, weightSeries, workoutGoal } from "@/lib/season"
+import { type DayLog, type Goal, type Member, dayResult, formatNumber, isHit, weightGoal, weightSeries, workoutGoal } from "@/lib/season"
+import { type DayRecord, weightDirection, weightRecords } from "@/lib/weight-stats"
 import { useSeason } from "@/components/squad-store"
 
 type Logs = (DayLog | undefined)[]
@@ -288,6 +289,9 @@ export function ConsistencyCalendar({
   const { TODAY, dateOf, weekdayDate, canEdit } = useSeason()
   const [hover, setHover] = React.useState<{ day: number; x: number; y: number; w: number } | null>(null)
   const wrap = React.useRef<HTMLDivElement>(null)
+  const weight = weightGoal(member)
+  const records = weight ? weightRecords(member, logs, TODAY) : {}
+  const low = weightDirection(member) < 0 ? "low" : "high"
 
   return (
     <figure>
@@ -311,7 +315,8 @@ export function ConsistencyCalendar({
                   const score = log ? (r.total ? r.hit / r.total : 1) : 0
                   const isToday = day === TODAY
                   const editable = !!onOpenDay && canEdit(day)
-                  const label = `${weekdayDate(day)}: ${future ? "upcoming" : log ? (r.total ? `${r.hit} of ${r.total} goals` : "checked in") : "no check-in"}`
+                  const record = records[day]
+                  const label = `${weekdayDate(day)}: ${future ? "upcoming" : log ? (r.total ? `${r.hit} of ${r.total} goals` : "checked in") : "no check-in"}${record ? `, new ${low} weight` : ""}`
                   const Cell = editable ? "button" : "span"
                   return (
                     <span key={day} role="gridcell" className="grid">
@@ -320,7 +325,7 @@ export function ConsistencyCalendar({
                           ? { type: "button" as const, onClick: () => onOpenDay(day), "aria-label": `${label}. ${log ? "Edit" : "Log"} this day` }
                           : { "aria-label": label })}
                         className={cn(
-                          "aspect-square rounded-[3px] sm:rounded-[5px]",
+                          "relative aspect-square rounded-[3px] sm:rounded-[5px]",
                           future && "border border-dashed border-border",
                           !future && !log && "bg-muted",
                           isToday && "ring-2 ring-foreground ring-offset-1 ring-offset-card",
@@ -333,7 +338,9 @@ export function ConsistencyCalendar({
                           const cell = e.currentTarget.getBoundingClientRect()
                           setHover({ day, x: cell.left - box.left + cell.width / 2, y: cell.top - box.top, w: box.width })
                         }}
-                      />
+                      >
+                        {record && <RecordMarks />}
+                      </Cell>
                     </span>
                   )
                 })}
@@ -343,7 +350,13 @@ export function ConsistencyCalendar({
         })}
         {hover && (
           <Tooltip x={hover.x} y={hover.y} width={hover.w}>
-            <CalendarTip member={member} day={hover.day} log={logs[hover.day]} editable={!!onOpenDay && canEdit(hover.day)} />
+            <CalendarTip
+              member={member}
+              day={hover.day}
+              log={logs[hover.day]}
+              editable={!!onOpenDay && canEdit(hover.day)}
+              record={records[hover.day]}
+            />
           </Tooltip>
         )}
       </div>
@@ -358,14 +371,43 @@ export function ConsistencyCalendar({
         <span className="flex items-center gap-1.5">
           <span className="size-3.5 rounded-[4px] bg-muted" /> No check-in
         </span>
+        {weight && (
+          <span className="flex items-center gap-1.5">
+            <span className="size-2.5 rounded-full bg-gold" /> New {low} weight
+          </span>
+        )}
       </figcaption>
     </figure>
   )
 }
 
-function CalendarTip({ member, day, log, editable }: { member: Member; day: number; log: DayLog | undefined; editable: boolean }) {
+// One gold dot for a new best weight, whether the weigh-in or the 5-day average set it
+function RecordMarks() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute top-1/2 left-1/2 size-1.5 -translate-1/2 rounded-full bg-gold ring-2 ring-gold-soft sm:size-2"
+    />
+  )
+}
+
+function CalendarTip({
+  member,
+  day,
+  log,
+  editable,
+  record,
+}: {
+  member: Member
+  day: number
+  log: DayLog | undefined
+  editable: boolean
+  record?: DayRecord
+}) {
   const { weekdayDate } = useSeason()
   const r = dayResult(member, log)
+  const low = weightDirection(member) < 0 ? "low" : "high"
+  const wu = weightGoal(member)?.unit === "%" ? "%" : " kg"
   return (
     <>
       <div className="font-medium">{weekdayDate(day)}</div>
@@ -378,6 +420,12 @@ function CalendarTip({ member, day, log, editable }: { member: Member; day: numb
         </>
       ) : (
         <div className="text-muted-foreground">No check-in</div>
+      )}
+      {record && (
+        <div className="mt-1 flex items-center gap-1.5 font-medium">
+          <span aria-hidden className="size-2 shrink-0 rounded-full bg-gold" />
+          New {low}: {[record.scale !== undefined && `${record.scale}${wu} weigh-in`, record.trend !== undefined && `${record.trend.toFixed(1)}${wu} 5-day avg`].filter(Boolean).join(", ")}
+        </div>
       )}
       {editable && <div className="mt-1 font-medium">Click to {log ? "edit" : "log"}</div>}
     </>
@@ -759,3 +807,4 @@ export function SquadLines({
     </figure>
   )
 }
+

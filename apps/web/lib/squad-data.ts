@@ -17,6 +17,7 @@ import {
   goalKey,
   initialsOf,
   isoDay,
+  meetsTarget,
 } from "@/lib/season"
 import { type Profile } from "@/lib/db/schema"
 import { requireApproved } from "@/lib/viewer"
@@ -102,8 +103,7 @@ function toGoal(row: GoalRow): Goal {
   }
 }
 
-const hitOf = (g: Goal, value: number | undefined) =>
-  value !== undefined && g.target !== undefined && (g.compare === "max" ? value <= g.target : value >= g.target)
+const hitOf = (g: Goal, value: number | undefined) => meetsTarget(g, value)
 
 // What another member is allowed to see of one goal: private goals vanish,
 // summary goals become hit-or-miss (weight becomes percent change)

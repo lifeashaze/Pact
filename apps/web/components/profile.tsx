@@ -254,7 +254,7 @@ export function Profile({ id }: { id: string }) {
             )}
 
             {weightStats && (
-              <Card title="This week" sub="Weight change, and share of body weight">
+              <Card title="This week" sub="Lowest weight you hit on 2 or more days, against last week">
                 <WeightProgress member={member} logs={memberLogs} />
               </Card>
             )}

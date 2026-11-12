@@ -96,7 +96,26 @@ export function weightRecords(member: Member, logs: Logs, today: number) {
 
 type WeekRange = (week: number) => { start: number; end: number }
 
-// The 7-day average at the end of each season week (or today), and its change on the week before.
+// A week's weight is the lowest one hit on at least two days that week: the second-lowest
+// weigh-in, so a single light morning doesn't count. For someone gaining it's the highest.
+// Needs two weigh-ins in the week
+export function weekLow(
+  member: Member,
+  logs: Logs,
+  start: number,
+  end: number
+) {
+  const values: number[] = []
+  for (let d = start; d <= end; d++) {
+    const w = logs[d]?.numbers.weight
+    if (w !== undefined) values.push(w)
+  }
+  if (values.length < 2) return undefined
+  const dir = weightDirection(member)
+  return values.sort((a, b) => (a - b) * -dir)[1]
+}
+
+// Each season week's weight (see weekLow) and its change from the last week that had one.
 // Week 1 is measured from the start weight
 export function weeklyChanges(
   member: Member,
@@ -105,13 +124,12 @@ export function weeklyChanges(
   weeks: number,
   weekDays: WeekRange
 ) {
-  const avg = averages(logs, today)
   const firstWeighIn = weighIns(logs, today).find((v) => v !== undefined)
   let previous = member.startWeight ?? firstWeighIn
   const out: {
     week: number
     end: number
-    avg?: number
+    low?: number
     change?: number
     partial: boolean
   }[] = []
@@ -119,48 +137,47 @@ export function weeklyChanges(
     const { start, end } = weekDays(week)
     if (start > today) break
     const last = Math.min(end, today)
-    const value = avg[last]
+    const low = weekLow(member, logs, start, last)
     out.push({
       week,
       end: last,
-      avg: value,
+      low,
       change:
-        value !== undefined && previous !== undefined
-          ? value - previous
+        low !== undefined && previous !== undefined
+          ? low - previous
           : undefined,
       partial: last < end,
     })
-    if (value !== undefined) previous = value
+    if (low !== undefined) previous = low
   }
   return out
 }
 
-export function weightPace(member: Member, logs: Logs, today: number) {
-  const avg = averages(logs, today)
-  let last = -1
-  for (let d = Math.min(today, avg.length - 1); d >= 0; d--)
-    if (avg[d] !== undefined) {
-      last = d
-      break
-    }
-  if (last < 0) return undefined
-  const current = avg[last]!
+export function weightPace(
+  member: Member,
+  logs: Logs,
+  today: number,
+  weeks: number,
+  weekDays: WeekRange
+) {
+  const rows = weeklyChanges(member, logs, today, weeks, weekDays).filter(
+    (r) => r.low !== undefined
+  )
+  const latest = rows.at(-1)
+  if (!latest) return undefined
+  const current = latest.low!
   const start = member.startWeight
-  const at = (d: number) => (d >= 0 ? avg[d] : undefined)
-  const diff = (a: number | undefined, b: number | undefined) =>
-    a !== undefined && b !== undefined ? a - b : undefined
 
   // Season pace needs a full week of data to mean anything
   const seasonPerWeek =
-    start !== undefined && last >= 6
-      ? ((current - start) / (last + 1)) * 7
+    start !== undefined && latest.end >= 6
+      ? ((current - start) / (latest.end + 1)) * 7
       : undefined
-  const lastWeek = diff(current, at(last - 7))
   // The prediction leans on the last two weeks so it follows how things are going now
-  const recentPerWeek =
-    at(last - 14) !== undefined
-      ? (current - at(last - 14)!) / 2
-      : (lastWeek ?? seasonPerWeek)
+  const earlier = [...rows].reverse().find((r) => r.week <= latest.week - 2)
+  const recentPerWeek = earlier
+    ? (current - earlier.low!) / (latest.week - earlier.week)
+    : (latest.change ?? seasonPerWeek)
 
   const goal = member.goalWeight
   const dir = weightDirection(member)
@@ -169,22 +186,22 @@ export function weightPace(member: Member, logs: Logs, today: number) {
     | { kind: "stalled" }
     | { kind: "date"; day: number; weeks: number }
     | undefined
-  if (goal !== undefined && recentPerWeek !== undefined) {
-    const remaining = goal - current
-    if (remaining * dir <= EPSILON) projection = { kind: "reached" }
-    else if (recentPerWeek * dir <= 0.01) projection = { kind: "stalled" }
-    else {
-      const weeks = remaining / recentPerWeek
-      projection = { kind: "date", weeks, day: last + Math.ceil(weeks * 7) }
-    }
-  } else if (goal !== undefined && (goal - current) * dir <= EPSILON) {
+  if (goal !== undefined && (goal - current) * dir <= EPSILON)
     projection = { kind: "reached" }
+  else if (goal !== undefined && recentPerWeek !== undefined) {
+    if (recentPerWeek * dir <= 0.01) projection = { kind: "stalled" }
+    else {
+      const w = (goal - current) / recentPerWeek
+      projection = { kind: "date", weeks: w, day: today + Math.ceil(w * 7) }
+    }
   }
 
   return {
+    // The latest week with a weight, and the one it is compared with
+    week: latest,
+    previous: rows.at(-2)?.low ?? (rows.length === 1 ? start : undefined),
     current,
     seasonPerWeek,
-    lastWeek,
     recentPerWeek,
     projection,
     // Percent of what you weigh now, so it keeps adapting as you lose

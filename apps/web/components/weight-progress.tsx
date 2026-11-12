@@ -25,23 +25,38 @@ export function WeightProgress({
   member: Member
   logs: Logs
 }) {
-  const { TODAY, longDate } = useSeason()
-  const pace = weightPace(member, logs, TODAY)
-  if (pace?.lastWeek === undefined)
+  const { TODAY, WEEKS, weekDays, weekOf, shortDate, longDate } = useSeason()
+  const pace = weightPace(member, logs, TODAY, WEEKS, weekDays)
+  if (pace?.week.change === undefined)
     return (
       <p className="text-sm text-muted-foreground">
-        Shows after a week of weigh-ins.
+        Shows once a week has 2 or more weigh-ins.
       </p>
     )
-  const pct = pace.percentOf(pace.lastWeek)!
+  const { week } = pace
+  const change = week.change!
+  const pct = pace.percentOf(change)!
   const proj = pace.projection
+  const isCurrent = week.week === weekOf(TODAY)
   return (
     <div>
+      {!isCurrent && (
+        <p className="mb-1 text-sm text-muted-foreground">
+          Week of {shortDate(weekDays(week.week).start)}. This week needs 2
+          weigh-ins
+        </p>
+      )}
       <p className="flex items-baseline gap-3 font-display font-semibold tabular-nums">
-        <span className="text-4xl">{signed(pace.lastWeek)} kg</span>
+        <span className="text-4xl">{signed(change)} kg</span>
         <span className="text-2xl text-muted-foreground">
           {signed(pct, 2)}%
         </span>
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {pace.current} kg
+        {pace.previous !== undefined
+          ? `, ${change > 0 ? "up from" : change < 0 ? "down from" : "same as"} ${pace.previous} kg`
+          : ""}
       </p>
       {pace.seasonPerWeek !== undefined && (
         <p className="mt-1 text-sm text-muted-foreground">
